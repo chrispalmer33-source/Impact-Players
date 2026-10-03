@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Impact players</title>
+<style>
+:root{--bg:#0b1220;--card:#111b2e;--line:#22314d;--tx:#e8eefb;--mut:#8a9bb8;--g:#9ef07a;--r:#ff7a7a;--b:#6cc4ff;--o:#ffb347}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;padding:20px;max-width:1200px;margin:auto}
+h1{margin:0 0 4px;font-size:26px}
+.sub{color:var(--mut);margin:0 0 14px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:18px}
+input,button{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font:inherit}
+button{cursor:pointer}button.on{border-color:var(--b);color:var(--b)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--b)}
+#st{color:var(--mut);margin-left:auto;font-size:13px}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:860px){.cols{grid-template-columns:1fr}}
+h2{font-size:18px;margin:0}
+.col h2.for{color:var(--g)}.col h2.ag{color:var(--r)}.col h2.lv{color:var(--b)}
+.col p{color:var(--mut);font-size:13px;margin:2px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px}
+.top{display:flex;justify-content:space-between;align-items:flex-start}
+.nm{font-weight:600}.meta{color:var(--mut);font-size:13px}
+.net{font-size:24px;font-weight:700}.pos{color:var(--g)}.neg{color:var(--r)}
+.row{display:flex;justify-content:space-between;color:var(--mut);font-size:13px;margin-top:6px}
+.track{position:relative;height:6px;background:var(--line);border-radius:3px;margin:14px 0 4px}
+.mk{position:absolute;top:-4px;width:12px;height:12px;transform:translateX(-50%)}
+.mk.pr{background:var(--b);transform:translateX(-50%) rotate(45deg);width:10px;height:10px}
+.mk.cu{background:var(--o);border-radius:50%}
+.sc{display:flex;justify-content:space-between;font-size:11px;color:var(--mut)}
+.empty{color:var(--mut);padding:12px 0}
+</style></head>
+<body>
+<h1>Impact players</h1>
+<p class="sub" id="sub">Who to root for and against across your Sleeper leagues.</p>
+<div class="bar">
+  <input id="u" value="chrispalmer33" aria-label="Sleeper username" autocomplete="off">
+  <button id="go">Load</button>
+  <button id="f-all" class="on">All remaining</button>
+  <button id="f-live">Live now</button>
+  <span id="st"></span>
+</div>
+<div class="cols">
+  <section class="col"><h2 class="for">Cheer for</h2><p>Top 5 positive net starts</p><div id="c1"></div></section>
+  <section class="col"><h2 class="ag">Cheer against</h2><p>Top 5 negative net starts</p><div id="c2"></div></section>
+  <section class="col"><h2 class="lv">Highest leverage</h2><p>Players who could swing the most matchups</p><div id="c3"></div></section>
+</div>
+<script>
+const $=s=>document.querySelector(s), A='https://api.sleeper.app/v1';
+const j=async u=>{const r=await fetch(u);if(!r.ok)throw Error(r.status+' '+u);return r.json()};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=t=>({WSH:'WAS',JAC:'JAX',LAR:'LA'}[t]||t);
+let players=null,filter='all',cards=[],timer;
+
+async function espn(){
+  const d=await j('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'),g={};
+  for(const e of d.events||[])for(const c of e.competitions[0].competitors)
+    g[norm(c.team.abbreviation)]={state:e.status.type.state,date:e.date};
+  return g;
+}
+const pts=(st,sc)=>Object.keys(st).reduce((a,k)=>a+(sc[k]?st[k]*sc[k]:0),0);
+
+async function load(){
+  const name=$('#u').value.trim();
+  $('#st').textContent='Loading…';
+  try{
+    const st=await j(A+'/state/nfl'), wk=st.display_week||st.week, season=st.season;
+    const user=await j(`${A}/user/${name}`);
+    const leagues=await j(`${A}/user/${user.user_id}/leagues/nfl/${season}`);
+    players ||= await j(A+'/players/nfl');
+    const q=`?season_type=regular`;
+    const [proj,stats,games]=await Promise.all([
+      j(`https://api.sleeper.com/projections/nfl/${season}/${wk}${q}`).catch(()=>[]),
+      j(`https://api.sleeper.com/stats/nfl/${season}/${wk}${q}`).catch(()=>[]),
+      espn().catch(()=>({}))]);
+    const pm={},sm={};
+    proj.forEach(p=>pm[p.player_id]=p.stats||{});
+    stats.forEach(p=>sm[p.player_id]=p.stats||{});
+    const per=(await Promise.all(leagues.map(async L=>{
+      const [rs,ms]=await Promise.all([j(`${A}/league/${L.league_id}/rosters`),j(`${A}/league/${L.league_id}/matchups/${wk}`)]);
+      const me=rs.find(r=>r.owner_id===user.user_id||(r.co_owners||[]).includes(user.user_id));
+      const mm=me&&ms.find(m=>m.roster_id===me.roster_id);
+      const op=mm&&mm.matchup_id&&ms.find(m=>m.matchup_id===mm.matchup_id&&m.roster_id!==me.roster_id);
+      return op?{L,mm,op}:null;
+    }))).filter(Boolean);
+
+    const gm=pid=>games[norm(players[pid]?.team)]||{state:'pre'};
+    const P={};
+    for(const {L,mm,op} of per){
+      const sc=L.scoring_settings||{};
+      const val=(pid,m)=>{const g=gm(pid).state,cur=m.players_points?.[pid]||0,pr=pts(pm[pid]||{},sc);
+        return g==='post'?cur:g==='in'?Math.max(cur,pr):pr};
+      const tot=m=>(m.starters||[]).reduce((a,p)=>a+(p&&p!=='0'?val(p,m):0),0);
+      const margin=Math.abs(tot(mm)-tot(op));
+      for(const [m,key] of [[mm,'yours'],[op,'against']])
+        for(const pid of m.starters||[]){
+          if(!pid||pid==='0'||gm(pid).state==='post')continue;
+          const e=P[pid]??={pid,yours:0,against:0,swing:0,leagues:[]};
+          e[key]++; e.leagues.push(L.name);
+          if(margin<pts(pm[pid]||{},sc))e.swing++;
+        }
+    }
+    cards=Object.values(P).map(e=>{
+      const p=players[e.pid]||{},g=gm(e.pid),s=sm[e.pid]||{},pr=pm[e.pid]||{};
+      return {...e,net:e.yours-e.against,name:p.full_name||p.last_name||e.pid,pos:p.position,team:p.team,
+        state:g.state,date:g.date,cur:s.pts_half_ppr||0,proj:pr.pts_half_ppr||0};
+    });
+    $('#sub').textContent=`Week ${wk} · ${per.length} leagues with a matchup. Net starts = yours − opponents, unfinished starters only.`;
+    $('#st').textContent='Updated '+new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'});
+    render();
+    clearInterval(timer);timer=setInterval(load,60000);
+  }catch(e){
+    $('#st').textContent='';
+    $('#c1').innerHTML=`<div class="empty">Couldn't load: ${esc(e.message)}. Check the username and your connection.</div>`;
+    $('#c2').innerHTML=$('#c3').innerHTML='';
+  }
+}
+
+function card(c){
+  const when=c.state==='in'?'Live':c.date?new Date(c.date).toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'}):'';
+  const cls=c.net>0?'pos':c.net<0?'neg':'';
+  const help=c.net>0?'More helps':c.net<0?'Less helps':'Both sides';
+  const x=v=>Math.min(100,Math.max(0,v/30*100));
+  return `<div class="card" title="${esc(c.leagues.join(', '))}">
+    <div class="top"><div><div class="nm">${esc(c.name)}</div>
+    <div class="meta">${esc(c.pos)} ${esc(c.team)} · ${esc(when)}</div></div>
+    <div class="net ${cls}">${c.net>0?'+':''}${c.net}</div></div>
+    <div class="row"><span>${c.yours} yours / ${c.against} against</span><span>${c.swing} swing</span></div>
+    <div class="row"><span>Standard .5 PPR</span><span class="${cls}">${help}</span></div>
+    <div class="track"><span class="mk cu" style="left:${x(c.cur)}%"></span><span class="mk pr" style="left:${x(c.proj)}%"></span></div>
+    <div class="sc"><span>0</span><span>10</span><span>20</span><span>30</span></div>
+    <div class="row"><span>Current ${c.state==='pre'?'not started':c.cur.toFixed(1)}</span><span>Projected ${c.proj.toFixed(1)}</span></div>
+  </div>`;
+}
+
+function render(){
+  const all=cards.filter(c=>filter==='all'||c.state==='in');
+  const f=all.filter(c=>c.net>0).sort((a,b)=>b.net-a.net||b.swing-a.swing).slice(0,5);
+  const a=all.filter(c=>c.net<0).sort((a,b)=>a.net-b.net||b.swing-a.swing).slice(0,5);
+  const seen=new Set([...f,...a]);
+  const l=all.filter(c=>!seen.has(c)&&c.swing>0).sort((a,b)=>b.swing-a.swing||(b.yours+b.against)-(a.yours+a.against)).slice(0,5);
+  const fill=(id,arr)=>$(id).innerHTML=arr.length?arr.map(card).join(''):'<div class="empty">Nothing here right now.</div>';
+  fill('#c1',f);fill('#c2',a);fill('#c3',l);
+}
+
+$('#go').onclick=load;
+$('#u').onkeydown=e=>{if(e.key==='Enter')load()};
+for(const [id,v] of [['all','all'],['live','live']])
+  $('#f-'+id).onclick=()=>{filter=v;$('#f-all').classList.toggle('on',v==='all');$('#f-live').classList.toggle('on',v==='live');render()};
+load();
+</script>
+</body></html>
