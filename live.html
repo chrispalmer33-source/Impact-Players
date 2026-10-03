@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Live scores</title>
 <style>
-:root{--bg:#0b1220;--card:#111b2e;--line:#22314d;--tx:#e8eefb;--mut:#8a9bb8;--me:#6cc4ff;--op:#ffb347}
+:root{--bg:#0b1220;--card:#111b2e;--line:#22314d;--tx:#e8eefb;--mut:#8a9bb8;--me:#6cc4ff;--op:#ffb347;--live:#7be36a;--gold:#d4a017}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;padding:14px}
 header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
@@ -15,9 +15,14 @@ button{cursor:pointer}
 #buf{color:var(--op);font-weight:600}#st{color:var(--mut);font-size:12px;margin-left:auto}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:14px}
 .panel h2{font-size:15px;margin:0 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chips button{border-radius:14px;padding:2px 10px;font-size:12px}
+.chips button.off{color:var(--mut);text-decoration:line-through;border-style:dashed}
 #feed{max-height:340px;overflow:auto}
 .play{border-left:3px solid var(--line);padding:5px 10px;margin-bottom:8px;background:#0e1829;border-radius:0 6px 6px 0}
-.play.big{border-left-color:#9ef07a}
+.play.td{border:1px solid var(--gold);border-left-width:3px;background:rgba(212,160,23,.16);border-radius:6px}
+.play.fg{border-left-color:var(--gold)}
+.lb{font-weight:700;font-size:14px}.lb.sm{font-size:12px;color:var(--gold)}
 .pm{color:var(--mut);font-size:12px}
 .pt{margin:2px 0 4px}
 .tags span{display:inline-block;font-size:12px;padding:1px 7px;border-radius:10px;margin:0 6px 3px 0;border:1px solid}
@@ -30,15 +35,25 @@ button{cursor:pointer}
 .lg{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
 .hd{display:flex;justify-content:space-between;gap:8px;font-size:13px}
 .hd b,.hd span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hd span{color:var(--mut)}
-.sc{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 8px;font-size:26px;font-weight:700}
+.sc{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 2px;font-size:26px;font-weight:700}
 .sc .me{color:var(--me)}.sc .op{color:var(--op)}.sc .lead{font-size:13px;font-weight:600;color:var(--mut)}
+.wc{text-align:center;font-size:12px;color:var(--mut);margin-bottom:8px}.wc b{color:var(--tx)}
 .pl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .r{display:flex;gap:5px;align-items:baseline;font-size:12.5px;padding:1px 0}
 .r i{font-style:normal;color:var(--mut);width:30px;flex:none;font-size:11px}
 .r span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r span.lv{color:var(--live);font-weight:600}
 .r b{font-variant-numeric:tabular-nums}
 .me .r b{color:var(--me)}.op .r b{color:var(--op)}
 .empty{color:var(--mut)}
+@media(min-width:1000px){
+  body{font-size:15px;padding:20px}
+  .wrap{display:grid;grid-template-columns:minmax(360px,430px) 1fr;gap:18px;align-items:start}
+  .panel{position:sticky;top:12px;margin-bottom:0}
+  #feed{max-height:calc(100vh - 190px)}
+  #grid{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+  .r{font-size:14px}.sc{font-size:30px}
+}
 </style></head>
 <body>
 <header>
@@ -50,32 +65,54 @@ button{cursor:pointer}
   <span class="key"><b class="m">You</b> · <b class="o">Opponent</b></span>
   <span id="buf"></span><span id="st"></span>
 </header>
-<section class="panel"><h2>Live scoring</h2><div id="feed"><div class="empty">Plays and score changes involving your players appear here after the delay.</div></div></section>
+<div class="wrap">
+<section class="panel"><h2>Live scoring</h2><div id="chips" class="chips"></div><div id="feed"><div class="empty">Plays and score changes involving your players appear here after the delay.</div></div></section>
 <main id="grid"><div class="empty">Loading your leagues…</div></main>
+</div>
 <script>
 const $=s=>document.querySelector(s),A='https://api.sleeper.app/v1',E='https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const j=async u=>{const r=await fetch(u);if(!r.ok)throw Error(r.status+' '+u);return r.json()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm=s=>String(s||'').toLowerCase().replace(/[.'’]/g,'').replace(/-/g,' ').replace(/\b(jr|sr|ii|iii|iv)\b/g,'').replace(/\s+/g,' ').trim();
+const nt=t=>({WSH:'WAS',LAR:'LA'}[t]||t);
+const pts=(st,sc)=>Object.keys(st).reduce((a,k)=>a+(sc[k]?st[k]*sc[k]:0),0);
 const POS={SUPER_FLEX:'SFLX',FLEX:'FLX',REC_FLEX:'FLX',WRRB_FLEX:'FLX',WRRBTE_FLEX:'FLX'};
 const get=k=>{try{return localStorage.getItem(k)}catch{return null}};
 const put=(k,v)=>{try{localStorage.setItem(k,v)}catch{}};
-let players,user,Ls=[],snaps=[],shown=null,feed=[],wk=null,curWk=null,selWk='auto',pt,seq=0,lastSig='',
-    seen=new Set(),seenEv=new Set(),delay=+(get('delay')??45);
+let players,user,Ls=[],snaps=[],shown=null,feed=[],wk=null,curWk=null,season=null,selWk='auto',pt,seq=0,lastSig='',
+    seen=new Set(),seenEv=new Set(),projC={w:0,t:0,m:{}},delay=+(get('delay')??45),
+    off=new Set(JSON.parse(get('off')||'[]'));
 if(get('user'))$('#u').value=get('user');
 $('#d').value=delay;$('#dl').textContent=delay+'s';
 $('#wk').innerHTML='<option value="auto">Current week</option>'+Array.from({length:18},(_,i)=>`<option value="${i+1}">Week ${i+1}</option>`).join('');
 
 const pn=pid=>{const p=players[pid]||{};return p.full_name||((p.first_name||'')+' '+(p.last_name||'')).trim()||pid};
 const clock=t=>new Date(t).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'});
-
 function reset(){snaps=[];shown=null;feed=[];seen.clear();seenEv.clear();lastSig='';wk=null}
+
+function setChips(){
+  $('#chips').innerHTML=Ls.map((L,i)=>`<button data-i="${i}" class="${off.has(L.name)?'off':''}">${esc(L.name)}</button>`).join('')+'<button data-a="all">All</button><button data-a="none">None</button>';
+}
+$('#chips').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.a==='all')off.clear();
+  else if(b.dataset.a==='none')Ls.forEach(L=>off.add(L.name));
+  else{const n=Ls[+b.dataset.i].name;off.has(n)?off.delete(n):off.add(n)}
+  put('off',JSON.stringify([...off]));setChips();lastSig='';renderFeed();
+};
+
+async function getProj(w){
+  if(projC.w===w&&Date.now()-projC.t<300000)return projC.m;
+  try{const a=await j(`https://api.sleeper.com/projections/nfl/${season}/${w}?season_type=regular`);const m={};a.forEach(p=>m[p.player_id]=p.stats||{});projC={w,t:Date.now(),m}}
+  catch{if(projC.w!==w)projC={w,t:Date.now()-240000,m:{}}}
+  return projC.m;
+}
 
 async function init(){
   $('#st').textContent='Loading leagues…';
   try{
     const name=$('#u').value.trim();put('user',name);
-    const st=await j(A+'/state/nfl');
+    const st=await j(A+'/state/nfl');season=st.season;
     user=await j(`${A}/user/${name}`);
     const leagues=await j(`${A}/user/${user.user_id}/leagues/nfl/${st.season}`);
     players ||= await j(A+'/players/nfl');
@@ -86,32 +123,46 @@ async function init(){
       const owner={},uname={};
       rs.forEach(r=>owner[r.roster_id]=r.owner_id);
       us.forEach(u=>uname[u.user_id]=u.metadata?.team_name||u.display_name);
-      return {id:L.league_id,name:L.name,pos:L.roster_positions||[],me:me.roster_id,owner,uname};
+      return {id:L.league_id,name:L.name,sc:L.scoring_settings||{},pos:L.roster_positions||[],me:me.roster_id,owner,uname};
     }))).filter(Boolean);
-    reset();
+    setChips();reset();
     await poll();clearInterval(pt);pt=setInterval(poll,15000);
   }catch(e){$('#st').textContent='';$('#grid').innerHTML=`<div class="empty">Couldn't load: ${esc(e.message)}. Check the username and your connection.</div>`}
 }
 
 async function poll(){
   try{
-    const st=await j(A+'/state/nfl');curWk=st.display_week||st.week;
+    const st=await j(A+'/state/nfl');season=st.season;curWk=st.display_week||st.week;
     const w=selWk==='auto'?curWk:+selWk;
     if(wk!==null&&w!==wk)reset();
     wk=w;
+    const sb=w===curWk?await j(E+'/scoreboard').catch(()=>null):null;
+    const live={},gs={};
+    for(const e of sb?.events||[])for(const c of e.competitions[0].competitors){
+      const t=nt(c.team.abbreviation);gs[t]=e.status.type.state;if(gs[t]==='in')live[t]=true}
+    const pm=await getProj(w);
+    const tm=pid=>nt(players[pid]?.team);
     const out=await Promise.all(Ls.map(async L=>{
       const ms=await j(`${A}/league/${L.id}/matchups/${w}`);
       const mm=ms.find(m=>m.roster_id===L.me);
       if(!mm)return null;
       const op=mm.matchup_id&&ms.find(m=>m.matchup_id===mm.matchup_id&&m.roster_id!==L.me);
-      const side=m=>m&&{total:m.points||0,rows:(m.starters||[]).map((p,i)=>[p,(m.players_points||{})[p]||0,L.pos[i]])};
-      return {name:L.name,opp:op?(L.uname[L.owner[op.roster_id]]||'Opponent'):'No opponent',me:side(mm),op:side(op)};
+      const side=m=>m&&{total:m.points||0,rows:(m.starters||[]).map((p,i)=>[p,(m.players_points||{})[p]||0,L.pos[i],!!live[tm(p)]])};
+      const val=(pid,m)=>{const s=gs[tm(pid)],cur=(m.players_points||{})[pid]||0,pr=pts(pm[pid]||{},L.sc);
+        if(!s||s==='post')return [cur,0];return s==='in'?[Math.max(cur,pr),.3*pr]:[pr,.5*pr]};
+      const ev=m=>{let t=0,v=0;for(const p of m.starters||[]){if(!p||p==='0')continue;const [x,s]=val(p,m);t+=x;v+=s*s}return [t,v]};
+      let wp=null;
+      if(op&&(sb||w!==curWk)){
+        const [a,va]=ev(mm),[b,vb]=ev(op),sd=Math.sqrt(va+vb);
+        wp=sd<.5?(a>b?100:a<b?0:50):100/(1+Math.exp(-1.702*(a-b)/sd));
+      }
+      return {name:L.name,opp:op?(L.uname[L.owner[op.roster_id]]||'Opponent'):'No opponent',me:side(mm),op:side(op),wp};
     }));
     const now=Date.now();
     snaps.push({t:now,data:out.filter(Boolean)});
     snaps=snaps.filter(s=>s.t>now-300000);
     $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${clock(now)}`;
-    if(w===curWk)await pollPlays().catch(()=>{});
+    if(sb)await pollPlays(sb).catch(()=>{});
   }catch(e){$('#st').textContent='Fetch error: '+e.message}
 }
 
@@ -120,14 +171,13 @@ function index(){
   if(!c)return [];
   for(const l of c.data)for(const s of ['me','op'])if(l[s])for(const [pid] of l[s].rows){
     if(!pid||pid==='0'||/^[A-Z]{2,3}$/.test(pid))continue;
-    const e=m[pid]??={n:norm(pn(pid)),name:pn(pid),y:0,a:0};
-    s==='me'?e.y++:e.a++;
+    const e=m[pid]??={n:norm(pn(pid)),name:pn(pid),yl:[],al:[]};
+    (s==='me'?e.yl:e.al).push(l.name);
   }
   return Object.values(m).filter(e=>e.n.includes(' '));
 }
 
-async function pollPlays(){
-  const sb=await j(E+'/scoreboard');
+async function pollPlays(sb){
   const live=(sb.events||[]).filter(e=>e.status.type.state==='in');
   const idx=index();
   await Promise.all(live.map(async e=>{
@@ -141,11 +191,12 @@ async function pollPlays(){
       seen.add(key);
       if(first)continue;
       const txt=norm(p.text);
-      const ps=idx.filter(x=>txt.includes(x.n));
+      const ps=idx.filter(x=>txt.includes(x.n)).map(x=>({name:x.name,yl:x.yl,al:x.al}));
       if(!ps.length)continue;
+      const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
       const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
       feed.push({kind:'play',t:Date.now(),n:++seq,text:p.text,dd:p.start?.downDistanceText||'',
-        q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,big:!!p.scoringPlay,ps});
+        q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,k,ps});
     }
   }));
 }
@@ -157,8 +208,8 @@ function diff(a,b){
     for(const s of ['me','op']){
       if(!la[s]||!lb[s])continue;
       const prev={};la[s].rows.forEach(r=>prev[r[0]]=r[1]);
-      for(const [pid,pts] of lb[s].rows){
-        const d=pts-(prev[pid]??pts);
+      for(const [pid,p] of lb[s].rows){
+        const d=p-(prev[pid]??p);
         if(Math.abs(d)>=0.05)feed.push({kind:'pts',t:b.t,n:++seq,s,d,name:pn(pid),lg:lb.name});
       }
     }
@@ -169,26 +220,32 @@ function diff(a,b){
 const f1=v=>v.toFixed(1);
 function col(side,cls){
   if(!side)return `<div class="${cls}"></div>`;
-  return `<div class="${cls}">${side.rows.map(([pid,p,pos])=>`<div class="r"><i>${esc(POS[pos]||pos||'')}</i><span>${esc(pn(pid))}</span><b>${f1(p)}</b></div>`).join('')}</div>`;
+  return `<div class="${cls}">${side.rows.map(([pid,p,pos,lv])=>`<div class="r"><i>${esc(POS[pos]||pos||'')}</i><span class="${lv?'lv':''}">${esc(pn(pid))}</span><b>${f1(p)}</b></div>`).join('')}</div>`;
 }
 function render(c){
   $('#grid').innerHTML=c.data.map(l=>{
     const m=l.me.total,o=l.op?l.op.total:0,d=m-o;
     return `<div class="lg"><div class="hd"><b>${esc(l.name)}</b><span>vs ${esc(l.opp)}</span></div>
       <div class="sc"><span class="me">${f1(m)}</span><span class="lead">${d>0?'+':''}${f1(d)}</span><span class="op">${f1(o)}</span></div>
+      ${l.wp!=null?`<div class="wc">Win chance (estimate) <b>You ${Math.round(l.wp)}%</b></div>`:''}
       <div class="pl">${col(l.me,'me')}${col(l.op,'op')}</div></div>`;
   }).join('')||'<div class="empty">No matchups found for this week.</div>';
 }
 function renderFeed(){
-  const cut=Date.now()-delay*1000;
-  const vis=feed.filter(f=>f.t<=cut).sort((a,b)=>b.t-a.t||b.n-a.n).slice(0,60);
-  const sig=vis.map(f=>f.n).join();
+  const cut=Date.now()-delay*1000,on=n=>!off.has(n);
+  const vis=feed.filter(f=>f.t<=cut).map(f=>{
+    if(f.kind==='pts')return on(f.lg)?f:null;
+    const ps=f.ps.map(p=>({name:p.name,y:p.yl.filter(on).length,a:p.al.filter(on).length})).filter(p=>p.y||p.a);
+    return ps.length?{...f,ps}:null;
+  }).filter(Boolean).sort((a,b)=>b.t-a.t||b.n-a.n).slice(0,60);
+  const sig=vis.map(f=>f.n).join()+'|'+[...off].join();
   if(sig===lastSig)return;
   lastSig=sig;
   $('#feed').innerHTML=vis.length?vis.map(f=>{
     if(f.kind==='pts')return `<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<small>${esc(f.lg)} · ${clock(f.t)}</small></div>`;
     const tags=f.ps.map(p=>(p.y?`<span class="me">${esc(p.name)} · yours in ${p.y}</span>`:'')+(p.a?`<span class="op">${esc(p.name)} · against in ${p.a}</span>`:'')).join('');
-    return `<div class="play${f.big?' big':''}"><div class="pm">${esc([f.q+' '+f.clk,f.dd,f.sc].filter(s=>s.trim()).join(' · '))}</div><div class="pt">${esc(f.text)}</div><div class="tags">${tags}</div></div>`;
+    const lab=f.k==='td'?'<div class="lb">🏈🚨 TOUCHDOWN</div>':f.k==='fg'?'<div class="lb sm">🥅 FIELD GOAL</div>':'';
+    return `<div class="play ${f.k}">${lab}<div class="pm">${esc([f.q+' '+f.clk,f.dd,f.sc].filter(s=>s.trim()).join(' · '))}</div><div class="pt">${esc(f.text)}</div><div class="tags">${tags}</div></div>`;
   }).join(''):'<div class="empty">Plays and score changes involving your players appear here after the delay.</div>';
 }
 
