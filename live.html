@@ -8,17 +8,28 @@
 body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;padding:14px}
 header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
 h1{font-size:22px;margin:0 8px 0 0}
-input,button{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit}
-input[type=range]{padding:0;accent-color:var(--me);width:150px}
+input,button,select{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit}
+input[type=range]{padding:0;accent-color:var(--me);width:140px}
 button{cursor:pointer}
 .key{font-size:13px;color:var(--mut)}.key b.m{color:var(--me)}.key b.o{color:var(--op)}
 #buf{color:var(--op);font-weight:600}#st{color:var(--mut);font-size:12px;margin-left:auto}
-.wrap{display:grid;grid-template-columns:1fr 280px;gap:14px;align-items:start}
-@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:14px}
+.panel h2{font-size:15px;margin:0 0 8px}
+#feed{max-height:340px;overflow:auto}
+.play{border-left:3px solid var(--line);padding:5px 10px;margin-bottom:8px;background:#0e1829;border-radius:0 6px 6px 0}
+.play.big{border-left-color:#9ef07a}
+.pm{color:var(--mut);font-size:12px}
+.pt{margin:2px 0 4px}
+.tags span{display:inline-block;font-size:12px;padding:1px 7px;border-radius:10px;margin:0 6px 3px 0;border:1px solid}
+.tags .me{color:var(--me);border-color:var(--me)}.tags .op{color:var(--op);border-color:var(--op)}
+.f{border-left:3px solid;padding:3px 10px;margin-bottom:6px;font-size:13px}
+.f.me{border-color:var(--me)}.f.op{border-color:var(--op)}
+.f b{margin-right:6px}.f.me b{color:var(--me)}.f.op b{color:var(--op)}
+.f small{color:var(--mut);margin-left:6px}
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
 .lg{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
 .hd{display:flex;justify-content:space-between;gap:8px;font-size:13px}
-.hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hd span{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd b,.hd span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hd span{color:var(--mut)}
 .sc{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 8px;font-size:26px;font-weight:700}
 .sc .me{color:var(--me)}.sc .op{color:var(--op)}.sc .lead{font-size:13px;font-weight:600;color:var(--mut)}
 .pl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -27,39 +38,38 @@ button{cursor:pointer}
 .r span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .r b{font-variant-numeric:tabular-nums}
 .me .r b{color:var(--me)}.op .r b{color:var(--op)}
-aside{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:80vh;overflow:auto}
-aside h2{font-size:15px;margin:0 0 8px}
-.f{border-left:3px solid;padding:3px 8px;margin-bottom:6px}
-.f.me{border-color:var(--me)}.f.op{border-color:var(--op)}
-.f b{margin-right:6px}.f.me b{color:var(--me)}.f.op b{color:var(--op)}
-.f small{display:block;color:var(--mut)}
 .empty{color:var(--mut)}
 </style></head>
 <body>
 <header>
   <h1>Live scores</h1>
   <input id="u" value="chrispalmer33" aria-label="Sleeper username" autocomplete="off">
+  <select id="wk" aria-label="Week"></select>
   <button id="go">Load</button>
   <label class="key">Delay <input id="d" type="range" min="0" max="180" step="5"> <b id="dl"></b></label>
   <span class="key"><b class="m">You</b> · <b class="o">Opponent</b></span>
   <span id="buf"></span><span id="st"></span>
 </header>
-<div class="wrap">
-  <main id="grid"><div class="empty">Loading your leagues…</div></main>
-  <aside><h2>Scoring feed</h2><div id="feed"><div class="empty">Score changes appear here after the delay.</div></div></aside>
-</div>
+<section class="panel"><h2>Live scoring</h2><div id="feed"><div class="empty">Plays and score changes involving your players appear here after the delay.</div></div></section>
+<main id="grid"><div class="empty">Loading your leagues…</div></main>
 <script>
-const $=s=>document.querySelector(s),A='https://api.sleeper.app/v1';
+const $=s=>document.querySelector(s),A='https://api.sleeper.app/v1',E='https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const j=async u=>{const r=await fetch(u);if(!r.ok)throw Error(r.status+' '+u);return r.json()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>String(s||'').toLowerCase().replace(/[.'’]/g,'').replace(/-/g,' ').replace(/\b(jr|sr|ii|iii|iv)\b/g,'').replace(/\s+/g,' ').trim();
 const POS={SUPER_FLEX:'SFLX',FLEX:'FLX',REC_FLEX:'FLX',WRRB_FLEX:'FLX',WRRBTE_FLEX:'FLX'};
 const get=k=>{try{return localStorage.getItem(k)}catch{return null}};
 const put=(k,v)=>{try{localStorage.setItem(k,v)}catch{}};
-let players,user,Ls=[],snaps=[],shown=null,feed=[],wk=null,pt,delay=+(get('delay')??45);
+let players,user,Ls=[],snaps=[],shown=null,feed=[],wk=null,curWk=null,selWk='auto',pt,seq=0,lastSig='',
+    seen=new Set(),seenEv=new Set(),delay=+(get('delay')??45);
 if(get('user'))$('#u').value=get('user');
 $('#d').value=delay;$('#dl').textContent=delay+'s';
+$('#wk').innerHTML='<option value="auto">Current week</option>'+Array.from({length:18},(_,i)=>`<option value="${i+1}">Week ${i+1}</option>`).join('');
 
 const pn=pid=>{const p=players[pid]||{};return p.full_name||((p.first_name||'')+' '+(p.last_name||'')).trim()||pid};
+const clock=t=>new Date(t).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'});
+
+function reset(){snaps=[];shown=null;feed=[];seen.clear();seenEv.clear();lastSig='';wk=null}
 
 async function init(){
   $('#st').textContent='Loading leagues…';
@@ -78,15 +88,16 @@ async function init(){
       us.forEach(u=>uname[u.user_id]=u.metadata?.team_name||u.display_name);
       return {id:L.league_id,name:L.name,pos:L.roster_positions||[],me:me.roster_id,owner,uname};
     }))).filter(Boolean);
-    snaps=[];shown=null;feed=[];wk=null;
+    reset();
     await poll();clearInterval(pt);pt=setInterval(poll,15000);
   }catch(e){$('#st').textContent='';$('#grid').innerHTML=`<div class="empty">Couldn't load: ${esc(e.message)}. Check the username and your connection.</div>`}
 }
 
 async function poll(){
   try{
-    const st=await j(A+'/state/nfl'),w=st.display_week||st.week;
-    if(wk!==null&&w!==wk){snaps=[];shown=null;feed=[]}
+    const st=await j(A+'/state/nfl');curWk=st.display_week||st.week;
+    const w=selWk==='auto'?curWk:+selWk;
+    if(wk!==null&&w!==wk)reset();
     wk=w;
     const out=await Promise.all(Ls.map(async L=>{
       const ms=await j(`${A}/league/${L.id}/matchups/${w}`);
@@ -99,8 +110,44 @@ async function poll(){
     const now=Date.now();
     snaps.push({t:now,data:out.filter(Boolean)});
     snaps=snaps.filter(s=>s.t>now-300000);
-    $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${new Date().toLocaleTimeString()}`;
+    $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${clock(now)}`;
+    if(w===curWk)await pollPlays().catch(()=>{});
   }catch(e){$('#st').textContent='Fetch error: '+e.message}
+}
+
+function index(){
+  const m={},c=snaps[snaps.length-1];
+  if(!c)return [];
+  for(const l of c.data)for(const s of ['me','op'])if(l[s])for(const [pid] of l[s].rows){
+    if(!pid||pid==='0'||/^[A-Z]{2,3}$/.test(pid))continue;
+    const e=m[pid]??={n:norm(pn(pid)),name:pn(pid),y:0,a:0};
+    s==='me'?e.y++:e.a++;
+  }
+  return Object.values(m).filter(e=>e.n.includes(' '));
+}
+
+async function pollPlays(){
+  const sb=await j(E+'/scoreboard');
+  const live=(sb.events||[]).filter(e=>e.status.type.state==='in');
+  const idx=index();
+  await Promise.all(live.map(async e=>{
+    const d=await j(`${E}/summary?event=${e.id}`);
+    const drives=[...(d.drives?.previous||[]),...(d.drives?.current?[d.drives.current]:[])];
+    const first=!seenEv.has(e.id);seenEv.add(e.id);
+    const cp=e.competitions[0].competitors,ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'';
+    for(const dr of drives)for(const p of dr.plays||[]){
+      const key=e.id+':'+p.id;
+      if(seen.has(key))continue;
+      seen.add(key);
+      if(first)continue;
+      const txt=norm(p.text);
+      const ps=idx.filter(x=>txt.includes(x.n));
+      if(!ps.length)continue;
+      const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
+      feed.push({kind:'play',t:Date.now(),n:++seq,text:p.text,dd:p.start?.downDistanceText||'',
+        q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,big:!!p.scoringPlay,ps});
+    }
+  }));
 }
 
 function diff(a,b){
@@ -112,11 +159,11 @@ function diff(a,b){
       const prev={};la[s].rows.forEach(r=>prev[r[0]]=r[1]);
       for(const [pid,pts] of lb[s].rows){
         const d=pts-(prev[pid]??pts);
-        if(Math.abs(d)>=0.05)feed.unshift({s,d,name:pn(pid),lg:lb.name,t:new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})});
+        if(Math.abs(d)>=0.05)feed.push({kind:'pts',t:b.t,n:++seq,s,d,name:pn(pid),lg:lb.name});
       }
     }
   });
-  feed=feed.slice(0,60);
+  feed=feed.slice(-300);
 }
 
 const f1=v=>v.toFixed(1);
@@ -131,20 +178,31 @@ function render(c){
       <div class="sc"><span class="me">${f1(m)}</span><span class="lead">${d>0?'+':''}${f1(d)}</span><span class="op">${f1(o)}</span></div>
       <div class="pl">${col(l.me,'me')}${col(l.op,'op')}</div></div>`;
   }).join('')||'<div class="empty">No matchups found for this week.</div>';
-  $('#feed').innerHTML=feed.length?feed.map(f=>`<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<small>${esc(f.lg)} · ${f.t}</small></div>`).join(''):'<div class="empty">Score changes appear here after the delay.</div>';
+}
+function renderFeed(){
+  const cut=Date.now()-delay*1000;
+  const vis=feed.filter(f=>f.t<=cut).sort((a,b)=>b.t-a.t||b.n-a.n).slice(0,60);
+  const sig=vis.map(f=>f.n).join();
+  if(sig===lastSig)return;
+  lastSig=sig;
+  $('#feed').innerHTML=vis.length?vis.map(f=>{
+    if(f.kind==='pts')return `<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<small>${esc(f.lg)} · ${clock(f.t)}</small></div>`;
+    const tags=f.ps.map(p=>(p.y?`<span class="me">${esc(p.name)} · yours in ${p.y}</span>`:'')+(p.a?`<span class="op">${esc(p.name)} · against in ${p.a}</span>`:'')).join('');
+    return `<div class="play${f.big?' big':''}"><div class="pm">${esc([f.q+' '+f.clk,f.dd,f.sc].filter(s=>s.trim()).join(' · '))}</div><div class="pt">${esc(f.text)}</div><div class="tags">${tags}</div></div>`;
+  }).join(''):'<div class="empty">Plays and score changes involving your players appear here after the delay.</div>';
 }
 
 function tick(){
   if(!snaps.length)return;
   const c=snaps.filter(s=>s.t<=Date.now()-delay*1000).pop();
-  if(!c){$('#buf').textContent=`Buffering ${Math.max(0,Math.ceil((snaps[0].t+delay*1000-Date.now())/1000))}s…`;return}
-  $('#buf').textContent='';
-  if(c===shown)return;
-  diff(shown,c);shown=c;render(c);
+  if(!c)$('#buf').textContent=`Buffering ${Math.max(0,Math.ceil((snaps[0].t+delay*1000-Date.now())/1000))}s…`;
+  else{$('#buf').textContent='';if(c!==shown){diff(shown,c);shown=c;render(c)}}
+  renderFeed();
 }
 setInterval(tick,1000);
 
-$('#d').oninput=e=>{delay=+e.target.value;$('#dl').textContent=delay+'s';put('delay',delay);shown=null;tick()};
+$('#d').oninput=e=>{delay=+e.target.value;$('#dl').textContent=delay+'s';put('delay',delay);shown=null;lastSig='';tick()};
+$('#wk').onchange=e=>{selWk=e.target.value;reset();poll()};
 $('#go').onclick=init;
 $('#u').onkeydown=e=>{if(e.key==='Enter')init()};
 init();
