@@ -78,6 +78,7 @@ const $=s=>document.querySelector(s),A='https://api.sleeper.app/v1',E='https://s
 const j=async u=>{const r=await fetch(u);if(!r.ok)throw Error(r.status+' '+u);return r.json()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm=s=>String(s||'').toLowerCase().replace(/[.'’]/g,'').replace(/-/g,' ').replace(/\b(jr|sr|ii|iii|iv)\b/g,'').replace(/\s+/g,' ').trim();
+const sn=s=>String(s||'').toLowerCase().replace(/[’']/g,'').replace(/\./g,' ').replace(/-/g,' ').replace(/\b(jr|sr|ii|iii|iv)\b/g,'').replace(/\s+/g,' ').trim();
 const nt=t=>({WSH:'WAS',LAR:'LA'}[t]||t);
 const pts=(st,sc)=>Object.keys(st).reduce((a,k)=>a+(sc[k]?st[k]*sc[k]:0),0);
 const POS={SUPER_FLEX:'SFLX',FLEX:'FLX',REC_FLEX:'FLX',WRRB_FLEX:'FLX',WRRBTE_FLEX:'FLX'};
@@ -114,7 +115,7 @@ $('#chips').onchange=e=>{
   offChanged();
 };
 
-const fin={};let rpT=null;
+const fin={};let rpT=null,rpMsg='';
 function fillReplay(sb){
   const ev=(sb?.events||[]).filter(e=>e.status.type.state==='post');
   ev.forEach(e=>fin[e.id]=e);
@@ -128,8 +129,9 @@ async function replay(){
   clearInterval(rpT);
   try{
     const d=await j(`${E}/summary?event=${id}`);
-    const cp=fin[id]?.competitions[0].competitors||[],ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'';
-    const all=[...(d.drives?.previous||[]),...(d.drives?.current?[d.drives.current]:[])].flatMap(x=>x.plays||[]);
+    const cp=fin[id]?.competitions[0].competitors||[],ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'',tms=cp.map(c=>nt(c.team.abbreviation));
+    let all=[...(d.drives?.previous||[]),...(d.drives?.current?[d.drives.current]:[])].flatMap(x=>x.plays||[]);
+    if(!all.length)all=d.plays||[];
     const idx=index();
     const build=(p,ps)=>{
       const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
@@ -138,13 +140,14 @@ async function replay(){
     };
     let q=[];
     for(const p of all){
-      const txt=norm(p.text),ps=idx.filter(x=>txt.includes(x.n)).map(x=>({name:x.name,yl:x.yl,al:x.al}));
+      const txt=sn(p.text),ps=idx.filter(x=>(!tms.length||tms.includes(x.tm))&&(txt.includes(x.n)||x.ab.test(txt))).map(x=>({name:x.name,yl:x.yl,al:x.al}));
       if(ps.length)q.push(build(p,ps));
     }
-    let note='';
-    if(!q.length){q=all.filter(p=>p.scoringPlay).map(p=>build(p,[]));note=' (none of your starters played, so scoring plays only)'}
+    let note=`matched ${q.length} of ${all.length} plays`;
+    if(!q.length){q=all.filter(p=>p.scoringPlay).map(p=>build(p,[]));note=`no plays matched your starters, so scoring plays only. Sample play: "${String(all[3]?.text||all[0]?.text||'none found').slice(0,90)}"`}
     q=q.slice(0,60);
-    $('#st').textContent=`Replaying ${q.length} plays${note}`;
+    rpMsg='Replay: '+note;
+    $('#st').textContent=rpMsg;
     rpT=setInterval(()=>{
       const f=q.shift();
       if(!f){clearInterval(rpT);return}
@@ -153,7 +156,7 @@ async function replay(){
   }catch(e){$('#st').textContent='Replay failed: '+e.message}
 }
 $('#rpgo').onclick=replay;
-$('#rpclr').onclick=()=>{clearInterval(rpT);feed=feed.filter(f=>!f.demo);lastSig='';renderFeed()};
+$('#rpclr').onclick=()=>{clearInterval(rpT);rpMsg='';feed=feed.filter(f=>!f.demo);lastSig='';renderFeed()};
 
 async function getProj(w){
   if(projC.w===w&&Date.now()-projC.t<300000)return projC.m;
@@ -216,7 +219,7 @@ async function poll(){
     const now=Date.now();
     snaps.push({t:now,data:out.filter(Boolean)});
     snaps=snaps.filter(s=>s.t>now-300000);
-    $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${clock(now)}`;
+    $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${clock(now)}`+(rpMsg?' · '+rpMsg:'');
     if(sb)await pollPlays(sb).catch(()=>{});
   }catch(e){$('#st').textContent='Fetch error: '+e.message}
 }
@@ -226,7 +229,8 @@ function index(){
   if(!c)return [];
   for(const l of c.data)for(const s of ['me','op'])if(l[s])for(const [pid] of l[s].rows){
     if(!pid||pid==='0'||/^[A-Z]{2,3}$/.test(pid))continue;
-    const e=m[pid]??={n:norm(pn(pid)),name:pn(pid),yl:[],al:[]};
+    const pl=players[pid]||{},fi=sn(pl.first_name).charAt(0),ln=sn(pl.last_name);
+    const e=m[pid]??={n:sn(pn(pid)),name:pn(pid),tm:nt(pl.team),ab:fi&&ln?new RegExp('\\b'+fi+' '+ln+'\\b'):/$^/,yl:[],al:[]};
     (s==='me'?e.yl:e.al).push(l.name);
   }
   return Object.values(m).filter(e=>e.n.includes(' '));
@@ -239,14 +243,14 @@ async function pollPlays(sb){
     const d=await j(`${E}/summary?event=${e.id}`);
     const drives=[...(d.drives?.previous||[]),...(d.drives?.current?[d.drives.current]:[])];
     const first=!seenEv.has(e.id);seenEv.add(e.id);
-    const cp=e.competitions[0].competitors,ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'';
+    const cp=e.competitions[0].competitors,ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'',tms=cp.map(c=>nt(c.team.abbreviation));
     for(const dr of drives)for(const p of dr.plays||[]){
       const key=e.id+':'+p.id;
       if(seen.has(key))continue;
       seen.add(key);
       if(first)continue;
-      const txt=norm(p.text);
-      const ps=idx.filter(x=>txt.includes(x.n)).map(x=>({name:x.name,yl:x.yl,al:x.al}));
+      const txt=sn(p.text);
+      const ps=idx.filter(x=>tms.includes(x.tm)&&(txt.includes(x.n)||x.ab.test(txt))).map(x=>({name:x.name,yl:x.yl,al:x.al}));
       if(!ps.length)continue;
       const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
       const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
