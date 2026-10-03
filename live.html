@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live scores</title>
+<style>
+:root{--bg:#0b1220;--card:#111b2e;--line:#22314d;--tx:#e8eefb;--mut:#8a9bb8;--me:#6cc4ff;--op:#ffb347}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;padding:14px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+h1{font-size:22px;margin:0 8px 0 0}
+input,button{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit}
+input[type=range]{padding:0;accent-color:var(--me);width:150px}
+button{cursor:pointer}
+.key{font-size:13px;color:var(--mut)}.key b.m{color:var(--me)}.key b.o{color:var(--op)}
+#buf{color:var(--op);font-weight:600}#st{color:var(--mut);font-size:12px;margin-left:auto}
+.wrap{display:grid;grid-template-columns:1fr 280px;gap:14px;align-items:start}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.lg{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+.hd{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hd span{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 8px;font-size:26px;font-weight:700}
+.sc .me{color:var(--me)}.sc .op{color:var(--op)}.sc .lead{font-size:13px;font-weight:600;color:var(--mut)}
+.pl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.r{display:flex;gap:5px;align-items:baseline;font-size:12.5px;padding:1px 0}
+.r i{font-style:normal;color:var(--mut);width:30px;flex:none;font-size:11px}
+.r span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r b{font-variant-numeric:tabular-nums}
+.me .r b{color:var(--me)}.op .r b{color:var(--op)}
+aside{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:80vh;overflow:auto}
+aside h2{font-size:15px;margin:0 0 8px}
+.f{border-left:3px solid;padding:3px 8px;margin-bottom:6px}
+.f.me{border-color:var(--me)}.f.op{border-color:var(--op)}
+.f b{margin-right:6px}.f.me b{color:var(--me)}.f.op b{color:var(--op)}
+.f small{display:block;color:var(--mut)}
+.empty{color:var(--mut)}
+</style></head>
+<body>
+<header>
+  <h1>Live scores</h1>
+  <input id="u" value="chrispalmer33" aria-label="Sleeper username" autocomplete="off">
+  <button id="go">Load</button>
+  <label class="key">Delay <input id="d" type="range" min="0" max="180" step="5"> <b id="dl"></b></label>
+  <span class="key"><b class="m">You</b> · <b class="o">Opponent</b></span>
+  <span id="buf"></span><span id="st"></span>
+</header>
+<div class="wrap">
+  <main id="grid"><div class="empty">Loading your leagues…</div></main>
+  <aside><h2>Scoring feed</h2><div id="feed"><div class="empty">Score changes appear here after the delay.</div></div></aside>
+</div>
+<script>
+const $=s=>document.querySelector(s),A='https://api.sleeper.app/v1';
+const j=async u=>{const r=await fetch(u);if(!r.ok)throw Error(r.status+' '+u);return r.json()};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const POS={SUPER_FLEX:'SFLX',FLEX:'FLX',REC_FLEX:'FLX',WRRB_FLEX:'FLX',WRRBTE_FLEX:'FLX'};
+const get=k=>{try{return localStorage.getItem(k)}catch{return null}};
+const put=(k,v)=>{try{localStorage.setItem(k,v)}catch{}};
+let players,user,Ls=[],snaps=[],shown=null,feed=[],wk=null,pt,delay=+(get('delay')??45);
+if(get('user'))$('#u').value=get('user');
+$('#d').value=delay;$('#dl').textContent=delay+'s';
+
+const pn=pid=>{const p=players[pid]||{};return p.full_name||((p.first_name||'')+' '+(p.last_name||'')).trim()||pid};
+
+async function init(){
+  $('#st').textContent='Loading leagues…';
+  try{
+    const name=$('#u').value.trim();put('user',name);
+    const st=await j(A+'/state/nfl');
+    user=await j(`${A}/user/${name}`);
+    const leagues=await j(`${A}/user/${user.user_id}/leagues/nfl/${st.season}`);
+    players ||= await j(A+'/players/nfl');
+    Ls=(await Promise.all(leagues.map(async L=>{
+      const [rs,us]=await Promise.all([j(`${A}/league/${L.league_id}/rosters`),j(`${A}/league/${L.league_id}/users`)]);
+      const me=rs.find(r=>r.owner_id===user.user_id||(r.co_owners||[]).includes(user.user_id));
+      if(!me)return null;
+      const owner={},uname={};
+      rs.forEach(r=>owner[r.roster_id]=r.owner_id);
+      us.forEach(u=>uname[u.user_id]=u.metadata?.team_name||u.display_name);
+      return {id:L.league_id,name:L.name,pos:L.roster_positions||[],me:me.roster_id,owner,uname};
+    }))).filter(Boolean);
+    snaps=[];shown=null;feed=[];wk=null;
+    await poll();clearInterval(pt);pt=setInterval(poll,15000);
+  }catch(e){$('#st').textContent='';$('#grid').innerHTML=`<div class="empty">Couldn't load: ${esc(e.message)}. Check the username and your connection.</div>`}
+}
+
+async function poll(){
+  try{
+    const st=await j(A+'/state/nfl'),w=st.display_week||st.week;
+    if(wk!==null&&w!==wk){snaps=[];shown=null;feed=[]}
+    wk=w;
+    const out=await Promise.all(Ls.map(async L=>{
+      const ms=await j(`${A}/league/${L.id}/matchups/${w}`);
+      const mm=ms.find(m=>m.roster_id===L.me);
+      if(!mm)return null;
+      const op=mm.matchup_id&&ms.find(m=>m.matchup_id===mm.matchup_id&&m.roster_id!==L.me);
+      const side=m=>m&&{total:m.points||0,rows:(m.starters||[]).map((p,i)=>[p,(m.players_points||{})[p]||0,L.pos[i]])};
+      return {name:L.name,opp:op?(L.uname[L.owner[op.roster_id]]||'Opponent'):'No opponent',me:side(mm),op:side(op)};
+    }));
+    const now=Date.now();
+    snaps.push({t:now,data:out.filter(Boolean)});
+    snaps=snaps.filter(s=>s.t>now-300000);
+    $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${new Date().toLocaleTimeString()}`;
+  }catch(e){$('#st').textContent='Fetch error: '+e.message}
+}
+
+function diff(a,b){
+  if(!a)return;
+  b.data.forEach((lb,i)=>{
+    const la=a.data[i];if(!la||la.name!==lb.name)return;
+    for(const s of ['me','op']){
+      if(!la[s]||!lb[s])continue;
+      const prev={};la[s].rows.forEach(r=>prev[r[0]]=r[1]);
+      for(const [pid,pts] of lb[s].rows){
+        const d=pts-(prev[pid]??pts);
+        if(Math.abs(d)>=0.05)feed.unshift({s,d,name:pn(pid),lg:lb.name,t:new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})});
+      }
+    }
+  });
+  feed=feed.slice(0,60);
+}
+
+const f1=v=>v.toFixed(1);
+function col(side,cls){
+  if(!side)return `<div class="${cls}"></div>`;
+  return `<div class="${cls}">${side.rows.map(([pid,p,pos])=>`<div class="r"><i>${esc(POS[pos]||pos||'')}</i><span>${esc(pn(pid))}</span><b>${f1(p)}</b></div>`).join('')}</div>`;
+}
+function render(c){
+  $('#grid').innerHTML=c.data.map(l=>{
+    const m=l.me.total,o=l.op?l.op.total:0,d=m-o;
+    return `<div class="lg"><div class="hd"><b>${esc(l.name)}</b><span>vs ${esc(l.opp)}</span></div>
+      <div class="sc"><span class="me">${f1(m)}</span><span class="lead">${d>0?'+':''}${f1(d)}</span><span class="op">${f1(o)}</span></div>
+      <div class="pl">${col(l.me,'me')}${col(l.op,'op')}</div></div>`;
+  }).join('')||'<div class="empty">No matchups found for this week.</div>';
+  $('#feed').innerHTML=feed.length?feed.map(f=>`<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<small>${esc(f.lg)} · ${f.t}</small></div>`).join(''):'<div class="empty">Score changes appear here after the delay.</div>';
+}
+
+function tick(){
+  if(!snaps.length)return;
+  const c=snaps.filter(s=>s.t<=Date.now()-delay*1000).pop();
+  if(!c){$('#buf').textContent=`Buffering ${Math.max(0,Math.ceil((snaps[0].t+delay*1000-Date.now())/1000))}s…`;return}
+  $('#buf').textContent='';
+  if(c===shown)return;
+  diff(shown,c);shown=c;render(c);
+}
+setInterval(tick,1000);
+
+$('#d').oninput=e=>{delay=+e.target.value;$('#dl').textContent=delay+'s';put('delay',delay);shown=null;tick()};
+$('#go').onclick=init;
+$('#u').onkeydown=e=>{if(e.key==='Enter')init()};
+init();
+</script>
+</body></html>
