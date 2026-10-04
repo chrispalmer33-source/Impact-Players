@@ -328,6 +328,16 @@ function fpBlock(f,on,SC){
   return g?`<details class="fpd" data-n="${f.n}"${openN.has(String(f.n))?' open':''}><summary>Fantasy points by league</summary>${g}</details>`:'';
 }
 $('#feed').addEventListener('toggle',e=>{const d=e.target;if(d.dataset&&d.dataset.n){d.open?openN.add(d.dataset.n):openN.delete(d.dataset.n)}},true);
+function hasImpact(ps,on,SC){
+  for(const p of ps){
+    if(!p.st||!Object.keys(p.st).length)return true;
+    for(const n of [...p.yl.filter(on),...p.al.filter(on)]){
+      const v=fp(p.st,p.pos,SC[n]);
+      if(v===null||Math.abs(v)>=0.05)return true;
+    }
+  }
+  return false;
+}
 function renderFeed(){
   const now=Date.now(),cut=now-delay*1000,on=n=>!off.has(n),SC={};
   Ls.forEach(L=>SC[L.name]=L.sc);
@@ -345,7 +355,10 @@ function renderFeed(){
   }
   const shownPlays=plays.filter(f=>f.t<=cut).map(f=>{
     const ps=f.ps.map(p=>({...p,y:ff==='opp'?0:p.yl.filter(on).length,a:ff==='mine'?0:p.al.filter(on).length,yl:ff==='opp'?[]:p.yl,al:ff==='mine'?[]:p.al})).filter(p=>p.y||p.a);
-    return ps.length?{...f,ps,pa:att[f.n]||[]}:null;
+    if(!ps.length)return null;
+    const pa=att[f.n]||[];
+    if(!pa.some(q=>Math.abs(q.d)>=0.05)&&!hasImpact(ps,on,SC))return null;
+    return {...f,ps,pa};
   }).filter(Boolean);
   const vis=[...shownPlays,...orph].sort((a,b)=>b.t-a.t||b.n-a.n).slice(0,60);
   const sig=vis.map(f=>f.n+(f.pa?':'+f.pa.length:'')).join()+'|'+[...off].join()+'|'+ff;
