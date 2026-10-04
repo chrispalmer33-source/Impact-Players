@@ -63,6 +63,14 @@ body.feedonly .wrap{display:flex;flex:1;min-height:0}
 body.feedonly #grid{display:none}
 body.feedonly .panel{position:static;margin:0;flex:1;display:flex;flex-direction:column;min-height:0}
 body.feedonly #feed{flex:1;max-height:none;min-height:0}
+body.cardsonly .panel{display:none}
+body.cardsonly .wrap{display:block}
+.seg{display:inline-flex}
+.seg button{border-radius:0;margin-left:-1px;padding:6px 10px;font-size:13px}
+.seg button:first-child{border-radius:6px 0 0 6px;margin-left:0}
+.seg button:last-child{border-radius:0 6px 6px 0}
+.seg button.on{border-color:var(--me);color:var(--me);position:relative}
+#ff{margin-bottom:10px}#ff button{font-size:12px;padding:4px 9px}
 @media(min-width:1000px){
   body{font-size:15px;padding:20px}
   .wrap{display:grid;grid-template-columns:minmax(360px,430px) 1fr;gap:18px;align-items:start}
@@ -78,13 +86,13 @@ body.feedonly #feed{flex:1;max-height:none;min-height:0}
   <input id="u" value="chrispalmer33" aria-label="Sleeper username" autocomplete="off">
   <select id="wk" aria-label="Week"></select>
   <button id="go">Load</button>
-  <button id="fo">Feed only</button>
+  <span class="seg" id="vw"><button data-v="both">Both</button><button data-v="feed">Feed only</button><button data-v="cards">Cards only</button></span>
   <label class="key">Delay <input id="d" type="range" min="0" max="180" step="5"> <b id="dl"></b></label>
   <span class="key leg"><b class="m">You</b> · <b class="o">Opponent</b></span>
   <span id="buf"></span><span id="st"></span>
 </header>
 <div class="wrap">
-<section class="panel"><h2>Live scoring</h2><div id="chips" class="chips"></div><div id="feed"><div class="empty">Plays and score changes involving your players appear here after the delay.</div></div></section>
+<section class="panel"><h2>Live scoring</h2><div class="seg" id="ff"><button data-f="all">All plays</button><button data-f="mine">Helps you</button><button data-f="opp">Helps opponents</button></div><div id="chips" class="chips"></div><div id="feed"><div class="empty">Plays and score changes involving your players appear here after the delay.</div></div></section>
 <main id="grid"><div class="empty">Loading your leagues…</div></main>
 </div>
 <script>
@@ -323,6 +331,7 @@ $('#feed').addEventListener('toggle',e=>{const d=e.target;if(d.dataset&&d.datase
 function renderFeed(){
   const now=Date.now(),cut=now-delay*1000,on=n=>!off.has(n),SC={};
   Ls.forEach(L=>SC[L.name]=L.sc);
+  const sideOk=s=>ff==='all'||(ff==='mine'?s==='me':s==='op');
   const plays=feed.filter(f=>f.kind==='play'),att={},orph=[];
   for(const q of feed){
     if(q.kind!=='pts')continue;
@@ -331,15 +340,15 @@ function renderFeed(){
       const d=Math.abs(pl.t-q.t);
       if(d<=120000&&d<bd&&pl.ps.some(p=>p.name===q.name)){best=pl;bd=d}
     }
-    if(best){if(q.t<=cut&&on(q.lg))(att[best.n]??=[]).push(q)}
-    else if(now-q.t>delay*1000+75000&&on(q.lg))orph.push(q);
+    if(best){if(q.t<=cut&&on(q.lg)&&sideOk(q.s))(att[best.n]??=[]).push(q)}
+    else if(now-q.t>delay*1000+75000&&on(q.lg)&&sideOk(q.s))orph.push(q);
   }
   const shownPlays=plays.filter(f=>f.t<=cut).map(f=>{
-    const ps=f.ps.map(p=>({...p,y:p.yl.filter(on).length,a:p.al.filter(on).length})).filter(p=>p.y||p.a);
+    const ps=f.ps.map(p=>({...p,y:ff==='opp'?0:p.yl.filter(on).length,a:ff==='mine'?0:p.al.filter(on).length,yl:ff==='opp'?[]:p.yl,al:ff==='mine'?[]:p.al})).filter(p=>p.y||p.a);
     return ps.length?{...f,ps,pa:att[f.n]||[]}:null;
   }).filter(Boolean);
   const vis=[...shownPlays,...orph].sort((a,b)=>b.t-a.t||b.n-a.n).slice(0,60);
-  const sig=vis.map(f=>f.n+(f.pa?':'+f.pa.length:'')).join()+'|'+[...off].join();
+  const sig=vis.map(f=>f.n+(f.pa?':'+f.pa.length:'')).join()+'|'+[...off].join()+'|'+ff;
   if(sig===lastSig)return;
   lastSig=sig;
   $('#feed').innerHTML=vis.length?vis.map(f=>{
@@ -364,10 +373,19 @@ $('#wk').onchange=e=>{selWk=e.target.value;reset();poll()};
 $('#go').onclick=init;
 $('#u').onkeydown=e=>{if(e.key==='Enter')init()};
 const qs=new URLSearchParams(location.search),qf=qs.get('feed'),qv=qs.get('view');
-let fo=qf!==null?qf==='1':qv!==null?qv==='feed':get('fo')==='1';
-function applyFo(){document.body.classList.toggle('feedonly',fo);$('#fo').textContent=fo?'Show league cards':'Feed only';lastSig=''}
-$('#fo').onclick=()=>{fo=!fo;put('fo',fo?'1':'0');applyFo()};
-applyFo();
+let vw=['feed','cards','both'].includes(qv)?qv:qf!==null?(qf==='1'?'feed':'both'):(get('vw')||(get('fo')==='1'?'feed':'both'));
+function applyVw(){
+  document.body.classList.toggle('feedonly',vw==='feed');
+  document.body.classList.toggle('cardsonly',vw==='cards');
+  document.querySelectorAll('#vw button').forEach(b=>b.classList.toggle('on',b.dataset.v===vw));
+  lastSig='';
+}
+$('#vw').onclick=e=>{const b=e.target.closest('button');if(!b)return;vw=b.dataset.v;put('vw',vw);applyVw()};
+applyVw();
+let ff=get('ff')||'all';
+function applyFf(){document.querySelectorAll('#ff button').forEach(b=>b.classList.toggle('on',b.dataset.f===ff));lastSig=''}
+$('#ff').onclick=e=>{const b=e.target.closest('button');if(!b)return;ff=b.dataset.f;put('ff',ff);applyFf();renderFeed()};
+applyFf();
 init();
 </script>
 </body></html>
