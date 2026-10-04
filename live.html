@@ -22,7 +22,11 @@ button{cursor:pointer}
 .ll label{display:flex;gap:8px;align-items:center;font-size:13px}
 .ll span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #feed{max-height:340px;overflow:auto}
-.play{border-left:3px solid var(--line);padding:5px 10px;margin-bottom:8px;background:#0e1829;border-radius:0 6px 6px 0}
+.play{border:1px solid var(--line);border-left:3px solid var(--line);padding:8px 10px;margin-bottom:10px;background:#0e1829;border-radius:8px}
+.play.ty-pass{border-left-color:#a78bfa}.play.ty-run{border-left-color:#f472b6}.play.ty-sack{border-left-color:#94a3b8}
+.play.ty-pen{border-left-color:#fb7185}.play.ty-kick{border-left-color:#94a3b8}.play.ty-other{border-left-color:#64748b}
+.tl{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;padding:0 6px;border-radius:4px;margin-right:4px;border:1px solid}
+.tl-pass{color:#a78bfa}.tl-run{color:#f472b6}.tl-sack{color:#94a3b8}.tl-pen{color:#fb7185}.tl-kick{color:#94a3b8}.tl-other{color:#8a9bb8}
 .play.td{border:1px solid var(--gold);border-left-width:3px;background:rgba(212,160,23,.16);border-radius:6px}
 .play.fg{border-left-color:var(--gold)}
 .lb{font-weight:700;font-size:14px}.lb.sm{font-size:12px;color:var(--gold)}
@@ -41,12 +45,12 @@ button{cursor:pointer}
 .sc{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 2px;font-size:26px;font-weight:700}
 .sc .me{color:var(--me)}.sc .op{color:var(--op)}.sc .lead{font-size:13px;font-weight:600;color:var(--mut)}
 .wc{text-align:center;font-size:12px;color:var(--mut);margin-bottom:8px}.wc b{color:var(--tx)}
-.pl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .r{display:flex;gap:5px;align-items:baseline;font-size:12.5px;padding:1px 0}
 .r i{font-style:normal;color:var(--mut);width:30px;flex:none;font-size:11px}
-.r span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .r span.lv{color:var(--live);font-weight:600}
-.r b{font-variant-numeric:tabular-nums}
+.r b{flex:none;font-variant-numeric:tabular-nums}
 .me .r b{color:var(--me)}.op .r b{color:var(--op)}
 .fpd{margin-top:4px;font-size:12px}.fpd summary{cursor:pointer;color:var(--mut)}
 .fph{margin-top:6px;font-weight:600}
@@ -234,7 +238,7 @@ async function pollPlays(sb){
       if(!ps.length)continue;
       const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
       const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
-      feed.push({kind:'play',t:Date.now(),n:++seq,text:p.text,dd:p.start?.downDistanceText||'',
+      feed.push({kind:'play',t:Date.now(),n:++seq,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',
         q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,k,ps});
     }
   }));
@@ -271,6 +275,29 @@ function render(c){
   }).join('')||'<div class="empty">No matchups found for this week.</div>';
 }
 const openN=new Set();
+const NM="[A-Z](?:\\.\\s?|\\s)[A-Za-z][A-Za-z'’\\-]*";
+const fmtN=n=>n.replace(/^([A-Z])(?:\.\s?|\s)/,'$1. ');
+const TL={pass:'PASS',run:'RUN',sack:'SACK',pen:'PENALTY',kick:'KICK',other:'PLAY'};
+function playInfo(p){
+  const t=String(p.text||''),low=t.toLowerCase(),ty0=(p.type?.text||'').toLowerCase();
+  const td=/touchdown/.test(low)&&!!p.scoringPlay;
+  const ym=low.match(/for (-?\d+) yards?/),lm=low.match(/loss of (\d+)/);
+  const rm=low.match(/(\d+) yards? rush/),yd=ym?+ym[1]:lm?-lm[1]:rm?+rm[1]:0;
+  if(/penalty/.test(low)&&!/declined/.test(low))return {ty:'pen',head:t};
+  const fm=t.replace(/^(\([^)]*\)\s*)+/,'').match(new RegExp('^('+NM+')')),first=fm&&fm[1];
+  if(/sacked/.test(low)&&first)return {ty:'sack',head:`${fmtN(first)} sacked for ${Math.abs(yd)} yd loss`};
+  const fg=low.match(/(\d+) yard field goal/);
+  if(fg&&first)return {ty:'kick',head:`${fmtN(first)} ${fg[1]} yd field goal ${/is good/.test(low)?'good':'missed'}`};
+  if(/\bpass\b/.test(low)){
+    if(/intercept/.test(low)&&first)return {ty:'pass',head:`${fmtN(first)} pass intercepted`};
+    const m=t.match(new RegExp('\\bto ('+NM+')'));
+    if(!/incomplete/.test(low)&&m)return {ty:'pass',head:`${fmtN(m[1])} ${yd} yd catch${td?' TD':''}`};
+    return {ty:'pass',head:t};
+  }
+  if((/rush/.test(ty0)||/\b(left|right) (end|tackle|guard)\b|up the middle|scrambles|\brush(es)?\b/.test(low))&&first)
+    return {ty:'run',head:`${fmtN(first)} ${yd} yd rush${td?' TD':''}`};
+  return {ty:'other',head:t};
+}
 function playStats(p,txt,hits){
   const out=hits.map(()=>({}));
   const raw=String(p.text||'').toLowerCase();
@@ -368,7 +395,7 @@ function renderFeed(){
     if(f.kind==='pts')return `<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<small>${esc(f.lg)} · ${clock(f.t)}</small></div>`;
     const tags=f.ps.map(p=>(p.y?`<span class="me">${esc(p.name)} · yours in ${p.y}</span>`:'')+(p.a?`<span class="op">${esc(p.name)} · against in ${p.a}</span>`:'')).join('');
     const lab=f.k==='td'?'<div class="lb">🏈🚨 TOUCHDOWN</div>':f.k==='fg'?'<div class="lb sm">🥅 FIELD GOAL</div>':'';
-    return `<div class="play ${f.k}">${lab}<div class="pm">${esc([f.q+' '+f.clk,f.dd,f.sc].filter(s=>s.trim()).join(' · '))}</div><div class="pt">${esc(f.text)}</div><div class="tags">${tags}</div>${fpBlock(f,on,SC)}</div>`;
+    return `<div class="play ${f.k} ty-${f.ty||'other'}">${lab}<div class="pm"><span class="tl tl-${f.ty||'other'}">${TL[f.ty]||'PLAY'}</span> ${esc([f.q+' '+f.clk,f.dd,f.sc].filter(s=>s.trim()).join(' · '))}</div><div class="pt" title="${esc(f.text)}">${esc(f.head||f.text)}</div><div class="tags">${tags}</div>${fpBlock(f,on,SC)}</div>`;
   }).join(''):'<div class="empty">Plays and score changes involving your players appear here after the delay.</div>';
 }
 
