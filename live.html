@@ -53,6 +53,15 @@ button{cursor:pointer}
 .fp{display:flex;justify-content:space-between;gap:8px;padding:1px 0}.fp span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fp.me b{color:var(--me)}.fp.op b{color:var(--op)}
 .empty{color:var(--mut)}
+body.feedonly{display:flex;flex-direction:column;height:100vh;overflow:hidden;padding:10px}
+body.feedonly header{flex:none;margin-bottom:8px;gap:6px}
+body.feedonly h1,body.feedonly .leg,body.feedonly .rpg{display:none}
+body.feedonly #st{margin-left:0;font-size:11px}
+body.feedonly #u{width:130px}
+body.feedonly .wrap{display:flex;flex:1;min-height:0}
+body.feedonly #grid{display:none}
+body.feedonly .panel{position:static;margin:0;flex:1;display:flex;flex-direction:column;min-height:0}
+body.feedonly #feed{flex:1;max-height:none;min-height:0}
 @media(min-width:1000px){
   body{font-size:15px;padding:20px}
   .wrap{display:grid;grid-template-columns:minmax(360px,430px) 1fr;gap:18px;align-items:start}
@@ -68,9 +77,10 @@ button{cursor:pointer}
   <input id="u" value="chrispalmer33" aria-label="Sleeper username" autocomplete="off">
   <select id="wk" aria-label="Week"></select>
   <button id="go">Load</button>
-  <span class="key">Test replay</span><select id="rp" aria-label="Replay a finished game"></select><button id="rpgo">Replay</button><button id="rpclr">Clear</button>
+  <button id="fo">Feed only</button>
+  <span class="rpg"><span class="key">Test replay</span> <select id="rp" aria-label="Replay a finished game"></select> <button id="rpgo">Replay</button> <button id="rpclr">Clear</button></span>
   <label class="key">Delay <input id="d" type="range" min="0" max="180" step="5"> <b id="dl"></b></label>
-  <span class="key"><b class="m">You</b> · <b class="o">Opponent</b></span>
+  <span class="key leg"><b class="m">You</b> · <b class="o">Opponent</b></span>
   <span id="buf"></span><span id="st"></span>
 </header>
 <div class="wrap">
@@ -304,31 +314,31 @@ function playStats(p,txt,hits){
   const pos=hits.map(at);
   const td=/touchdown/.test(raw),ym=raw.match(/for (-?\d+) yards?/),lm=raw.match(/loss of (\d+)/);
   const yd=ym?+ym[1]:lm?-lm[1]:0;
-  const fg=raw.match(/(\d+) yard field goal/);
-  if(fg){const d=+fg[1],good=/is good/.test(raw);
-    hits.forEach((x,i)=>{if(pos[i]<0)return;const s=out[i];
-      if(good){s.fgm=1;s[d<20?'fgm_0_19':d<30?'fgm_20_29':d<40?'fgm_30_39':d<50?'fgm_40_49':d<60?'fgm_50_59':'fgm_60p']=1;if(d>=50&&d<60)s.fgm_50p=1}
-      else s.fgmiss=1});
-    return out}
-  if(/extra point/.test(raw)){hits.forEach((x,i)=>{if(pos[i]>=0)out[i][/is good/.test(raw)?'xpm':'xpmiss']=1});return out}
-  const sk=txt.indexOf('sacked');
-  if(sk>=0){hits.forEach((x,i)=>{if(pos[i]>=0&&pos[i]<sk)out[i].pass_sack=1});return out}
-  const pi=txt.search(/\bpass\b/);
-  if(pi>=0){
+  const sk=txt.indexOf('sacked'),pi=txt.search(/\bpass\b/);
+  if(sk>=0){
+    hits.forEach((x,i)=>{if(pos[i]>=0&&pos[i]<sk)out[i].pass_sack=1});
+  }else if(pi>=0){
     const ti=txt.indexOf(' to ',pi),inc=/incomplete/.test(raw),icp=/intercept/.test(raw);
     hits.forEach((x,i)=>{
-      const s=out[i],a=pos[i];if(a<0)return;
+      const s=out[i],a=pos[i];if(a<0||x.pos==='K')return;
       if(a<pi){s.pass_att=1;
         if(icp){s.pass_int=1;s.pass_inc=1}else if(inc)s.pass_inc=1;
         else{s.pass_cmp=1;s.pass_yd=yd;if(td)s.pass_td=1}}
       else if(ti>=0&&a>ti){s.rec_tgt=1;if(!inc&&!icp){s.rec=1;s.rec_yd=yd;if(td)s.rec_td=1}}
     });
-    return out;
-  }
-  if(/rush/i.test(p.type?.text||'')||/\b(left|right) (end|tackle|guard)\b|up the middle|scrambles|rushes|kneel/.test(raw)){
-    let b=-1;hits.forEach((x,i)=>{if(pos[i]>=0&&(b<0||pos[i]<pos[b]))b=i});
+  }else if(/rush/i.test(p.type?.text||'')||/\b(left|right) (end|tackle|guard)\b|up the middle|scrambles|rushes|kneel/.test(raw)){
+    let b=-1;hits.forEach((x,i)=>{if(x.pos!=='K'&&pos[i]>=0&&(b<0||pos[i]<pos[b]))b=i});
     if(b>=0){const s=out[b];s.rush_att=1;s.rush_yd=yd;if(td)s.rush_td=1}
   }
+  const good=/is good/.test(raw),fg=raw.match(/(\d+) yard field goal/);
+  hits.forEach((x,i)=>{
+    if(x.pos!=='K'||pos[i]<0)return;
+    const s=out[i];
+    if(fg){const d=+fg[1];
+      if(good){s.fgm=1;s[d<20?'fgm_0_19':d<30?'fgm_20_29':d<40?'fgm_30_39':d<50?'fgm_40_49':d<60?'fgm_50_59':'fgm_60p']=1;if(d>=50&&d<60)s.fgm_50p=1}
+      else s.fgmiss=1;
+    }else if(/extra point/.test(raw))s[good?'xpm':'xpmiss']=1;
+  });
   return out;
 }
 function fp(st,pos,sc){
@@ -380,6 +390,11 @@ $('#d').oninput=e=>{delay=+e.target.value;$('#dl').textContent=delay+'s';put('de
 $('#wk').onchange=e=>{selWk=e.target.value;reset();poll()};
 $('#go').onclick=init;
 $('#u').onkeydown=e=>{if(e.key==='Enter')init()};
+const qs=new URLSearchParams(location.search),qf=qs.get('feed'),qv=qs.get('view');
+let fo=qf!==null?qf==='1':qv!==null?qv==='feed':get('fo')==='1';
+function applyFo(){document.body.classList.toggle('feedonly',fo);$('#fo').textContent=fo?'Show league cards':'Feed only';lastSig=''}
+$('#fo').onclick=()=>{fo=!fo;put('fo',fo?'1':'0');applyFo()};
+applyFo();
 init();
 </script>
 </body></html>
