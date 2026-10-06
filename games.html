@@ -22,7 +22,11 @@ button{cursor:pointer}
 .gh .sum{color:var(--mut);margin-top:2px}.me{color:var(--me)}.op{color:var(--op)}
 .teams{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:800px){.teams{grid-template-columns:1fr}}
-.teams h2{font-size:15px;margin:0 0 8px}
+.teams h2{font-size:16px;margin:0 0 8px}
+.teams h2.me{color:var(--me)}.teams h2.op{color:var(--op)}
+.teams h2 small{color:var(--mut);font-weight:400;font-size:12px;margin-left:8px}
+.pc.pm{border-left:3px solid var(--me)}.pc.po{border-left:3px solid var(--op)}
+.tags .also{border-color:var(--line);color:var(--mut);border-style:dashed}
 .pc{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px}
 .r1{display:flex;gap:8px;align-items:baseline}
 .r1 b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -142,18 +146,20 @@ function render(c){
   $('#gh').innerHTML=`<div class="gh"><div class="big">${esc(g.away)} ${g.state==='pre'?'at':`${esc(g.as)} – ${esc(g.hs)}`} ${esc(g.home)} <span class="pos">${esc(g.detail)}</span></div>
     <div class="sum">You own <b class="me">${ny}</b> players in <b class="me">${ty}</b> starting spots; you face <b class="op">${na}</b> players in <b class="op">${ta}</b>.
     Points so far: <b class="me">${f1(py)}</b> for you, <b class="op">${f1(pa)}</b> for opponents (summed across leagues).</div></div>`;
-  const card=e=>{
-    const p=players[e.pid]||{},y=e.yl.length,a=e.al.length,net=y-a,pr=projC.m[e.pid]?.pts_half_ppr;
-    const rows=[...e.yl.map(x=>[...x,'me']),...e.al.map(x=>[...x,'op'])].map(([lg,v,s])=>`<div class="lr ${s}"><span>${esc(lg)}</span><b>${f1(v)}</b></div>`).join('');
-    return `<div class="pc"><div class="r1"><b>${esc(pn(e.pid))}</b><span class="pos">${esc(p.position||'')}</span><span class="net ${net>0?'p':net<0?'n':''}">${net>0?'+':''}${net}</span></div>
-      <div class="tags">${y?`<span class="me">yours in ${y}</span>`:''}${a?`<span class="op">against in ${a}</span>`:''}</div>
-      <div class="pts">${y?`For you <b class="me">${f1(sum(e.yl))}</b>`:''}${y&&a?' · ':''}${a?`Against <b class="op">${f1(sum(e.al))}</b>`:''}${pr!=null?` · proj ${f1(pr)} (½ PPR)`:''}</div>
-      <details data-p="${esc(e.pid)}"${openP.has(e.pid)?' open':''}><summary>Points by league</summary>${rows}</details></div>`;
+  const card=(e,s)=>{
+    const p=players[e.pid]||{},mine=s==='me',arr=mine?e.yl:e.al,oth=mine?e.al:e.yl,pr=projC.m[e.pid]?.pts_half_ppr,k=e.pid+'-'+s;
+    const rows=arr.map(([lg,v])=>`<div class="lr"><span>${esc(lg)}</span><b>${f1(v)}</b></div>`).join('');
+    return `<div class="pc ${mine?'pm':'po'}"><div class="r1"><b>${esc(pn(e.pid))}</b><span class="pos">${esc(team(e.pid))} ${esc(p.position||'')}</span></div>
+      <div class="tags"><span class="${s}">${mine?'yours':'against'} in ${arr.length}</span>${oth.length?`<span class="also">also ${mine?'against':'yours'} in ${oth.length}</span>`:''}</div>
+      <div class="pts">${mine?'For you':'For opponents'} <b class="${s}">${f1(sum(arr))}</b>${pr!=null?` · proj ${f1(pr)} (½ PPR)`:''}</div>
+      <details data-p="${esc(k)}"${openP.has(k)?' open':''}><summary>Points by league</summary>${rows}</details></div>`;
   };
-  $('#list').innerHTML='<div class="teams">'+[g.away,g.home].map(t=>{
-    const ps=list.filter(e=>team(e.pid)===t).sort((a,b)=>(b.yl.length+b.al.length)-(a.yl.length+a.al.length)||pn(a.pid).localeCompare(pn(b.pid)));
-    return `<section><h2>${esc(t)}</h2>${ps.map(card).join('')||'<div class="empty">None of your starters or opponents\' starters.</div>'}</section>`;
-  }).join('')+'</div>';
+  const col=s=>{
+    const key=s==='me'?'yl':'al',ps=list.filter(e=>e[key].length).sort((a,b)=>b[key].length-a[key].length||sum(b[key])-sum(a[key])||pn(a.pid).localeCompare(pn(b.pid)));
+    const spots=ps.reduce((a,e)=>a+e[key].length,0),pts=ps.reduce((a,e)=>a+sum(e[key]),0);
+    return `<section><h2 class="${s}">${s==='me'?'Yours':'Against'}<small>${ps.length} players · ${spots} spots · ${f1(pts)} pts</small></h2>${ps.map(e=>card(e,s)).join('')||'<div class="empty">None in this game.</div>'}</section>`;
+  };
+  $('#list').innerHTML='<div class="teams">'+col('me')+col('op')+'</div>';
 }
 
 function tick(){
