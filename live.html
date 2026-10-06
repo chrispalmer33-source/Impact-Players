@@ -58,9 +58,18 @@ button{cursor:pointer}
 .fp.me b{color:var(--me)}.fp.op b{color:var(--op)}
 .fp small{color:var(--mut);font-weight:400}
 .empty{color:var(--mut)}
+.lg.acc-g{border-top:3px solid #4ade80}.lg.acc-a{border-top:3px solid #fbbf24}.lg.acc-r{border-top:3px solid #f87171}
+.wp-g{color:#4ade80}.wp-a{color:#fbbf24}.wp-r{color:#f87171}
+.rec{color:var(--mut);font-weight:400;font-size:11px;margin-left:4px}
+.fin{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:1px 6px;align-self:center}
+#cmp.on{border-color:var(--me);color:var(--me)}
+body.compact .lg{padding:6px 10px;cursor:pointer}
+body.compact .lg:not(.open) .pl{display:none}
+body.compact .sc{font-size:18px;margin:2px 0}
+body.compact .wc{margin-bottom:0}
 body.feedonly{display:flex;flex-direction:column;height:100vh;overflow:hidden;padding:10px}
 body.feedonly header{flex:none;margin-bottom:8px;gap:6px}
-body.feedonly h1,body.feedonly .leg{display:none}
+body.feedonly h1,body.feedonly .leg,body.feedonly .rpg{display:none}
 body.feedonly #st{margin-left:0;font-size:11px}
 body.feedonly #u{width:130px}
 body.feedonly .wrap{display:flex;flex:1;min-height:0}
@@ -91,6 +100,8 @@ body.cardsonly .wrap{display:block}
   <select id="wk" aria-label="Week"></select>
   <button id="go">Load</button>
   <span class="seg" id="vw"><button data-v="both">Both</button><button data-v="feed">Feed only</button><button data-v="cards">Cards only</button></span>
+  <button id="cmp">Compact</button>
+  <span class="rpg"><span class="key">Test replay</span> <select id="rp" aria-label="Replay a finished game"></select> <button id="rpgo">Replay</button> <button id="rpclr">Clear</button></span>
   <label class="key">Delay <input id="d" type="range" min="0" max="180" step="5"> <b id="dl"></b></label>
   <span class="key leg"><b class="m">You</b> · <b class="o">Opponent</b></span>
   <span id="buf"></span><span id="st"></span>
@@ -161,10 +172,10 @@ async function init(){
       const [rs,us]=await Promise.all([j(`${A}/league/${L.league_id}/rosters`),j(`${A}/league/${L.league_id}/users`)]);
       const me=rs.find(r=>r.owner_id===user.user_id||(r.co_owners||[]).includes(user.user_id));
       if(!me)return null;
-      const owner={},uname={};
-      rs.forEach(r=>owner[r.roster_id]=r.owner_id);
+      const owner={},uname={},rec={};
+      rs.forEach(r=>{owner[r.roster_id]=r.owner_id;const t=r.settings||{};rec[r.roster_id]=`${t.wins||0}-${t.losses||0}${t.ties?'-'+t.ties:''}`});
       us.forEach(u=>uname[u.user_id]=u.metadata?.team_name||u.display_name);
-      return {id:L.league_id,name:L.name,sc:L.scoring_settings||{},pos:L.roster_positions||[],me:me.roster_id,owner,uname};
+      return {id:L.league_id,name:L.name,sc:L.scoring_settings||{},pos:L.roster_positions||[],me:me.roster_id,owner,uname,rec};
     }))).filter(Boolean);
     setChips();reset();
     await poll();clearInterval(pt);pt=setInterval(poll,15000);
@@ -181,6 +192,7 @@ async function poll(){
     const live={},gs={};
     for(const e of sb?.events||[])for(const c of e.competitions[0].competitors){
       const t=nt(c.team.abbreviation);gs[t]=e.status.type.state;if(gs[t]==='in')live[t]=true}
+    fillReplay(sb);
     const pm=await getProj(w);
     const tm=pid=>nt(players[pid]?.team);
     const out=await Promise.all(Ls.map(async L=>{
@@ -197,12 +209,14 @@ async function poll(){
         const [a,va]=ev(mm),[b,vb]=ev(op),sd=Math.sqrt(va+vb);
         wp=sd<.5?(a>b?100:a<b?0:50):100/(1+Math.exp(-1.702*(a-b)/sd));
       }
-      return {name:L.name,opp:op?(L.uname[L.owner[op.roster_id]]||'Opponent'):'No opponent',me:side(mm),op:side(op),wp};
+      const ids=[...(mm.starters||[]),...(op?op.starters||[]:[])].filter(x=>x&&x!=='0');
+      const done=!!(sb||w!==curWk)&&ids.every(x=>{const s=gs[tm(x)];return !s||s==='post'});
+      return {name:L.name,opp:op?(L.uname[L.owner[op.roster_id]]||'Opponent'):'No opponent',me:side(mm),op:side(op),wp,done,myRec:L.rec[L.me]||'',opRec:op?(L.rec[op.roster_id]||''):''};
     }));
     const now=Date.now();
     snaps.push({t:now,data:out.filter(Boolean)});
     snaps=snaps.filter(s=>s.t>now-300000);
-    $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${clock(now)}`;
+    $('#st').textContent=`Week ${w} · ${Ls.length} leagues · polled ${clock(now)}`+(rpMsg?' · '+rpMsg:'');
     if(sb)await pollPlays(sb).catch(()=>{});
   }catch(e){$('#st').textContent='Fetch error: '+e.message}
 }
@@ -267,12 +281,49 @@ function col(side,cls){
 }
 function render(c){
   $('#grid').innerHTML=c.data.map(l=>{
-    const m=l.me.total,o=l.op?l.op.total:0,d=m-o;
-    return `<div class="lg"><div class="hd"><b>${esc(l.name)}</b><span>vs ${esc(l.opp)}</span></div>
-      <div class="sc"><span class="me">${f1(m)}</span><span class="lead">${d>0?'+':''}${f1(d)}</span><span class="op">${f1(o)}</span></div>
-      ${l.wp!=null?`<div class="wc">Win chance (estimate) <b>You ${Math.round(l.wp)}%</b></div>`:''}
+    const m=l.me.total,o=l.op?l.op.total:0;
+    const k=l.wp==null?'':l.wp>=65?'g':l.wp>=40?'a':'r';
+    return `<div class="lg ${k?'acc-'+k:''}${openC.has(l.name)?' open':''}" data-n="${esc(l.name)}"><div class="hd"><b>${esc(l.name)}${l.myRec?`<small class="rec">${esc(l.myRec)}</small>`:''}</b><span>vs ${esc(l.opp)}${l.opRec?`<small class="rec">${esc(l.opRec)}</small>`:''}</span></div>
+      <div class="sc"><span class="me">${f1(m)}</span>${l.done?'<span class="fin">FINAL</span>':''}<span class="op">${f1(o)}</span></div>
+      ${l.wp!=null?`<div class="wc">Win chance (estimate) <b class="wp-${k}">You ${Math.round(l.wp)}%</b></div>`:''}
       <div class="pl">${col(l.me,'me')}${col(l.op,'op')}</div></div>`;
   }).join('')||'<div class="empty">No matchups found for this week.</div>';
+}
+const openC=new Set();
+const fin={};let rpT=null,rpMsg='';
+function fillReplay(sb){
+  const ev=(sb?.events||[]).filter(e=>e.status.type.state==='post');
+  ev.forEach(e=>fin[e.id]=e);
+  const sel=$('#rp'),key=ev.map(e=>e.id).join();
+  if(sel.dataset.k===key)return;
+  sel.dataset.k=key;
+  sel.innerHTML=ev.map(e=>`<option value="${e.id}">${esc(e.shortName||e.name)}</option>`).join('')||'<option value="">No finished games</option>';
+}
+async function replay(){
+  const id=$('#rp').value;if(!id)return;
+  clearInterval(rpT);
+  try{
+    const d=await j(`${E}/summary?event=${id}`);
+    const cp=fin[id]?.competitions[0].competitors||[],ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'',tms=cp.map(c=>nt(c.team.abbreviation));
+    let all=[...(d.drives?.previous||[]),...(d.drives?.current?[d.drives.current]:[])].flatMap(x=>x.plays||[]);
+    if(!all.length)all=d.plays||[];
+    const idx=index();
+    const build=(p,ps)=>{
+      const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
+      const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
+      return {kind:'play',demo:true,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,k,ps};
+    };
+    let q=[];
+    for(const p of all){
+      const txt=sn(p.text),hits=idx.filter(x=>(!tms.length||tms.includes(x.tm))&&(txt.includes(x.n)||x.ab.test(txt))),sts=playStats(p,txt,hits);
+      if(hits.length)q.push(build(p,hits.map((x,i)=>({name:x.name,pos:x.pos,yl:x.yl,al:x.al,st:sts[i]}))));
+    }
+    let note=`matched ${q.length} of ${all.length} plays`;
+    if(!q.length){q=all.filter(p=>p.scoringPlay).map(p=>build(p,[]));note=`no plays matched your starters, so scoring plays only. Sample play: "${String(all[3]?.text||all[0]?.text||'none found').slice(0,90)}"`}
+    q=q.slice(0,60);
+    rpMsg='Replay: '+note;$('#st').textContent=rpMsg;
+    rpT=setInterval(()=>{const f=q.shift();if(!f){clearInterval(rpT);return}f.t=Date.now()-delay*1000-1;f.n=++seq;feed.push(f);feed=feed.slice(-300);renderFeed()},2500);
+  }catch(e){$('#st').textContent='Replay failed: '+e.message}
 }
 const openN=new Set();
 const NM="[A-Z](?:\\.\\s?|\\s)[A-Za-z][A-Za-z'’\\-]*";
@@ -374,15 +425,16 @@ function renderFeed(){
     if(q.kind!=='pts')continue;
     let best=null,bd=1e9;
     for(const pl of plays){
+      if(pl.demo)continue;
       const d=Math.abs(pl.t-q.t);
       if(d<=120000&&d<bd&&pl.ps.some(p=>p.name===q.name)){best=pl;bd=d}
     }
     if(best){if(q.t<=cut&&on(q.lg)&&sideOk(q.s))(att[best.n]??=[]).push(q)}
     else if(now-q.t>delay*1000+75000&&on(q.lg)&&sideOk(q.s))orph.push(q);
   }
-  const shownPlays=plays.filter(f=>f.t<=cut).map(f=>{
+  const shownPlays=plays.filter(f=>f.demo||f.t<=cut).map(f=>{
     const ps=f.ps.map(p=>({...p,y:ff==='opp'?0:p.yl.filter(on).length,a:ff==='mine'?0:p.al.filter(on).length,yl:ff==='opp'?[]:p.yl,al:ff==='mine'?[]:p.al})).filter(p=>p.y||p.a);
-    if(!ps.length)return null;
+    if(!ps.length)return f.demo?{...f,ps,pa:[]}:null;
     const pa=att[f.n]||[];
     if(!pa.some(q=>Math.abs(q.d)>=0.05)&&!hasImpact(ps,on,SC))return null;
     return {...f,ps,pa};
@@ -422,6 +474,13 @@ function applyVw(){
 }
 $('#vw').onclick=e=>{const b=e.target.closest('button');if(!b)return;vw=b.dataset.v;put('vw',vw);applyVw()};
 applyVw();
+let cmp=get('cmp')==='1';
+function applyCmp(){document.body.classList.toggle('compact',cmp);$('#cmp').classList.toggle('on',cmp)}
+$('#cmp').onclick=()=>{cmp=!cmp;put('cmp',cmp?'1':'0');applyCmp()};
+$('#grid').onclick=e=>{const c=e.target.closest('.lg');if(!c||!cmp)return;const n=c.dataset.n;openC.has(n)?openC.delete(n):openC.add(n);c.classList.toggle('open')};
+applyCmp();
+$('#rpgo').onclick=replay;
+$('#rpclr').onclick=()=>{clearInterval(rpT);rpMsg='';feed=feed.filter(f=>!f.demo);lastSig='';renderFeed()};
 let ff=get('ff')||'all';
 function applyFf(){document.querySelectorAll('#ff button').forEach(b=>b.classList.toggle('on',b.dataset.f===ff));lastSig=''}
 $('#ff').onclick=e=>{const b=e.target.closest('button');if(!b)return;ff=b.dataset.f;put('ff',ff);applyFf();renderFeed()};
