@@ -192,7 +192,7 @@ async function poll(){
     const live={},gs={};
     for(const e of sb?.events||[])for(const c of e.competitions[0].competitors){
       const t=nt(c.team.abbreviation);gs[t]=e.status.type.state;if(gs[t]==='in')live[t]=true}
-    fillReplay(sb);
+    if(rpFor!==w){rpFor=w;loadReplayGames(w).catch(()=>{rpFor=null;$('#rp').innerHTML='<option value="">Couldn\'t load games</option>'})}
     const pm=await getProj(w);
     const tm=pid=>nt(players[pid]?.team);
     const out=await Promise.all(Ls.map(async L=>{
@@ -290,18 +290,20 @@ function render(c){
   }).join('')||'<div class="empty">No matchups found for this week.</div>';
 }
 const openC=new Set();
-const fin={};let rpT=null,rpMsg='';
-function fillReplay(sb){
-  const ev=(sb?.events||[]).filter(e=>e.status.type.state==='post');
-  ev.forEach(e=>fin[e.id]=e);
-  const sel=$('#rp'),key=ev.map(e=>e.id).join();
-  if(sel.dataset.k===key)return;
-  sel.dataset.k=key;
-  sel.innerHTML=ev.map(e=>`<option value="${e.id}">${esc(e.shortName||e.name)}</option>`).join('')||'<option value="">No finished games</option>';
+const fin={};let rpT=null,rpMsg='',rpFor=null;
+async function loadReplayGames(w){
+  const ws=[w,w-1].filter(x=>x>=1);
+  const res=await Promise.all(ws.map(x=>j(`${E}/scoreboard?seasontype=2&week=${x}`).then(d=>[x,d]).catch(()=>[x,null])));
+  if(res.every(r=>!r[1]))throw Error('no scoreboard');
+  const ev=[];
+  for(const [x,d] of res)for(const e of d?.events||[])if(e.status.type.state==='post'){fin[e.id]=e;ev.push([x,e])}
+  $('#rp').innerHTML=ev.map(([x,e])=>`<option value="${e.id}">Wk ${x}: ${esc(e.shortName||e.name)}</option>`).join('')||'<option value="">No finished games</option>';
 }
 async function replay(){
-  const id=$('#rp').value;if(!id)return;
+  const id=$('#rp').value;
+  if(!id){rpMsg='Replay: no finished games to replay yet';$('#st').textContent=rpMsg;return}
   clearInterval(rpT);
+  rpMsg='Replay: loading plays…';$('#st').textContent=rpMsg;
   try{
     const d=await j(`${E}/summary?event=${id}`);
     const cp=fin[id]?.competitions[0].competitors||[],ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'',tms=cp.map(c=>nt(c.team.abbreviation));
@@ -323,7 +325,7 @@ async function replay(){
     q=q.slice(0,60);
     rpMsg='Replay: '+note;$('#st').textContent=rpMsg;
     rpT=setInterval(()=>{const f=q.shift();if(!f){clearInterval(rpT);return}f.t=Date.now()-delay*1000-1;f.n=++seq;feed.push(f);feed=feed.slice(-300);renderFeed()},2500);
-  }catch(e){$('#st').textContent='Replay failed: '+e.message}
+  }catch(e){rpMsg='Replay failed: '+e.message;$('#st').textContent=rpMsg}
 }
 const openN=new Set();
 const NM="(?:[A-Z]\\.){1,3}\\s?(?:St\\.\\s)?[A-Za-z][A-Za-z'’\\-]*|[A-Z]\\s[A-Za-z][A-Za-z'’\\-]*";
