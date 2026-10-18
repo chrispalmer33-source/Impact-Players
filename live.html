@@ -58,6 +58,7 @@ button{cursor:pointer}
 .fp.me b{color:var(--me)}.fp.op b{color:var(--op)}
 .fp small{color:var(--mut);font-weight:400}
 .empty{color:var(--mut)}
+.rpct,.rbar,.rh{display:none}
 .adj{font-style:normal;font-size:11px;color:var(--mut);border:1px dashed var(--line);border-radius:10px;padding:0 6px;margin-left:4px}
 .lg.acc-g{border-top:3px solid #4ade80}.lg.acc-a{border-top:3px solid #fbbf24}.lg.acc-r{border-top:3px solid #f87171}
 .wp-g{color:#4ade80}.wp-a{color:#fbbf24}.wp-r{color:#f87171}
@@ -93,15 +94,23 @@ body.rotate .panel{display:none}
 body.rotate .wrap{display:flex;flex:1;min-height:0}
 body.rotate #grid{display:flex;flex:1;min-width:0;min-height:0}
 body.rotate #grid .lg{display:none}
-body.rotate #grid .lg.cur{display:flex;flex-direction:column;flex:1;min-height:0;padding:2.2vh 2.5vw;border-radius:12px}
-body.rotate .hd{font-size:clamp(14px,2.8vh,34px)}
-body.rotate .sc{font-size:clamp(34px,11vh,130px);margin:1.5vh 0}
-body.rotate .fin{font-size:clamp(12px,2.4vh,28px)}
-body.rotate .wc{font-size:clamp(12px,2.4vh,28px);margin-bottom:1.5vh}
-body.rotate .pl{flex:1;min-height:0;align-content:start;gap:2.5vw}
+body.rotate #grid .lg.cur{display:flex;flex-direction:column;flex:1;min-height:0;padding:2vh 2.2vw}
+body.rotate #grid .lg.cur{--c:var(--line);border:4px solid var(--c);background:linear-gradient(180deg,color-mix(in srgb,var(--c) 14%,var(--card)),var(--card) 38%);box-shadow:0 0 28px color-mix(in srgb,var(--c) 35%,transparent);border-radius:16px}
+body.rotate #grid .lg.cur.acc-g{--c:#4cd964}body.rotate #grid .lg.cur.acc-a{--c:#ffc43d}body.rotate #grid .lg.cur.acc-r{--c:#ff5d5d}
+body.rotate .lg.acc-g,body.rotate .lg.acc-a,body.rotate .lg.acc-r{border-top-width:4px}
+body.rotate .hd{font-size:clamp(13px,2.1vh,22px);align-items:baseline}
+body.rotate .hd b{font-size:1.15em}
+body.rotate .sc{align-items:center;font-size:clamp(30px,8vh,84px);line-height:1;margin:1vh 0 .4vh}
+body.rotate .sc>.fin,body.rotate .wc{display:none}
+body.rotate .rpct{display:block;text-align:center;font-size:clamp(20px,4.6vh,48px);color:var(--c)}
+body.rotate .rpct small{display:block;font-size:clamp(10px,1.6vh,14px);color:var(--mut);text-transform:uppercase;letter-spacing:.08em;font-weight:400;margin-top:3px}
+body.rotate .rbar{display:block;height:6px;border-radius:3px;background:color-mix(in srgb,var(--op) 45%,var(--line));margin:1vh 0 1.6vh;overflow:hidden}
+body.rotate .rbar i{display:block;height:100%;background:var(--me);width:var(--w)}
+body.rotate .pl{flex:1;min-height:0;align-content:start;gap:2vw}
 body.rotate .lg .pl{display:grid}
-body.rotate .r{font-size:clamp(13px,3.3vh,40px);padding:.35vh 0;gap:.8vw}
-body.rotate .r i{width:2.6em;font-size:.75em}
+body.rotate .rh{display:block;margin:0 0 .6vh;font-size:clamp(10px,1.5vh,13px);letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line);padding-bottom:.5vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.rotate .r{font-size:clamp(12px,2.35vh,26px);padding:.55vh 0;gap:.7vw;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+body.rotate .r i{width:2.4em;font-size:.72em}
 body.rotate #rot{display:flex;align-items:center;gap:8px;flex:none;margin-bottom:8px;flex-wrap:wrap}
 #rot button,#rot select{padding:5px 10px;font-size:13px}
 #rotbar{flex:1;min-width:80px;height:5px;background:var(--line);border-radius:3px;overflow:hidden}
@@ -303,9 +312,9 @@ function diff(a,b){
 }
 
 const f1=v=>v.toFixed(1);
-function col(side,cls){
+function col(side,cls,h){
   if(!side)return `<div class="${cls}"></div>`;
-  return `<div class="${cls}">${side.rows.map(([pid,p,pos,lv])=>`<div class="r"><i>${esc(POS[pos]||pos||'')}</i><span class="${lv?'lv':''}">${esc(pn(pid))}</span><b>${f1(p)}</b></div>`).join('')}</div>`;
+  return `<div class="${cls}"><div class="rh">${esc(h||'')}</div>${side.rows.map(([pid,p,pos,lv])=>`<div class="r"><i>${esc(POS[pos]||pos||'')}</i><span class="${lv?'lv':''}">${esc(pn(pid))}</span><b>${f1(p)}</b></div>`).join('')}</div>`;
 }
 function render(c){
   rotNames=c.data.map(l=>l.name);if(rotI>=rotNames.length)rotI=0;
@@ -313,9 +322,10 @@ function render(c){
     const m=l.me.total,o=l.op?l.op.total:0;
     const k=l.wp==null?'':l.wp>=65?'g':l.wp>=40?'a':'r';
     return `<div class="lg ${k?'acc-'+k:''}${openC.has(l.name)?' open':''}${l.name===rotName()?' cur':''}" data-n="${esc(l.name)}"><div class="hd"><b>${esc(l.name)}${l.myRec?`<small class="rec">${esc(l.myRec)}</small>`:''}</b><span>vs ${esc(l.opp)}${l.opRec?`<small class="rec">${esc(l.opRec)}</small>`:''}</span></div>
-      <div class="sc"><span class="me">${f1(m)}</span>${l.done?'<span class="fin">FINAL</span>':''}<span class="op">${f1(o)}</span></div>
+      <div class="sc"><span class="me">${f1(m)}</span>${l.done?'<span class="fin">FINAL</span>':''}<span class="rpct">${l.wp!=null&&!l.done?Math.round(l.wp)+'%<small>Win chance</small>':l.done?'FINAL':''}</span><span class="op">${f1(o)}</span></div>
+      ${l.wp!=null?`<div class="rbar" style="--w:${Math.round(l.wp)}%"><i></i></div>`:''}
       ${l.wp!=null?`<div class="wc">Win chance (estimate) <b class="wp-${k}">You ${Math.round(l.wp)}%</b></div>`:''}
-      <div class="pl">${col(l.me,'me')}${col(l.op,'op')}</div></div>`;
+      <div class="pl">${col(l.me,'me','You')}${col(l.op,'op',l.opp)}</div></div>`;
   }).join('')||'<div class="empty">No matchups found for this week.</div>';
 }
 const openC=new Set();
