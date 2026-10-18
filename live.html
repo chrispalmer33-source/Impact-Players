@@ -58,6 +58,7 @@ button{cursor:pointer}
 .fp.me b{color:var(--me)}.fp.op b{color:var(--op)}
 .fp small{color:var(--mut);font-weight:400}
 .empty{color:var(--mut)}
+.adj{font-style:normal;font-size:11px;color:var(--mut);border:1px dashed var(--line);border-radius:10px;padding:0 6px;margin-left:4px}
 .lg.acc-g{border-top:3px solid #4ade80}.lg.acc-a{border-top:3px solid #fbbf24}.lg.acc-r{border-top:3px solid #f87171}
 .wp-g{color:#4ade80}.wp-a{color:#fbbf24}.wp-r{color:#f87171}
 .rec{color:var(--mut);font-weight:400;font-size:11px;margin-left:4px}
@@ -84,6 +85,28 @@ body.cardsonly .wrap{display:block}
 .seg button:last-child{border-radius:0 6px 6px 0}
 .seg button.on{border-color:var(--me);color:var(--me);position:relative}
 #ff{margin-bottom:10px}#ff button{font-size:12px;padding:4px 9px}
+#rot{display:none}
+body.rotate{display:flex;flex-direction:column;height:100vh;overflow:hidden;padding:10px}
+body.rotate header{flex:none;margin-bottom:8px;gap:6px}
+body.rotate h1,body.rotate .leg,body.rotate .rpg,body.rotate #cmp{display:none}
+body.rotate .panel{display:none}
+body.rotate .wrap{display:flex;flex:1;min-height:0}
+body.rotate #grid{display:flex;flex:1;min-width:0;min-height:0}
+body.rotate #grid .lg{display:none}
+body.rotate #grid .lg.cur{display:flex;flex-direction:column;flex:1;min-height:0;padding:2.2vh 2.5vw;border-radius:12px}
+body.rotate .hd{font-size:clamp(14px,2.8vh,34px)}
+body.rotate .sc{font-size:clamp(34px,11vh,130px);margin:1.5vh 0}
+body.rotate .fin{font-size:clamp(12px,2.4vh,28px)}
+body.rotate .wc{font-size:clamp(12px,2.4vh,28px);margin-bottom:1.5vh}
+body.rotate .pl{flex:1;min-height:0;align-content:start;gap:2.5vw}
+body.rotate .lg .pl{display:grid}
+body.rotate .r{font-size:clamp(13px,3.3vh,40px);padding:.35vh 0;gap:.8vw}
+body.rotate .r i{width:2.6em;font-size:.75em}
+body.rotate #rot{display:flex;align-items:center;gap:8px;flex:none;margin-bottom:8px;flex-wrap:wrap}
+#rot button,#rot select{padding:5px 10px;font-size:13px}
+#rotbar{flex:1;min-width:80px;height:5px;background:var(--line);border-radius:3px;overflow:hidden}
+#rotbar i{display:block;height:100%;width:0;background:var(--me)}
+#rotn{color:var(--mut);font-size:13px}
 @media(min-width:1000px){
   body{font-size:15px;padding:20px}
   .wrap{display:grid;grid-template-columns:minmax(360px,430px) 1fr;gap:18px;align-items:start}
@@ -92,20 +115,25 @@ body.cardsonly .wrap{display:block}
   #grid{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
   .r{font-size:14px}.sc{font-size:30px}
 }
+.topnav{display:flex;gap:14px;margin:0 0 10px;font-size:13px;flex-wrap:wrap}.topnav a{color:var(--mut);text-decoration:none}.topnav a:hover{color:var(--tx)}.topnav a.here{color:var(--tx);font-weight:600}
+body.feedonly .topnav,body.rotate .topnav{display:none}
 </style></head>
 <body>
+<nav class="topnav"><a href="index.html">Home</a><a href="live.html" class="here">Live scores</a><a href="impact-players.html">Impact players</a><a href="games.html">Game exposure</a></nav>
+
 <header>
   <h1>Live scores</h1>
   <input id="u" value="chrispalmer33" aria-label="Sleeper username" autocomplete="off">
   <select id="wk" aria-label="Week"></select>
   <button id="go">Load</button>
-  <span class="seg" id="vw"><button data-v="both">Both</button><button data-v="feed">Feed only</button><button data-v="cards">Cards only</button></span>
+  <span class="seg" id="vw"><button data-v="both">Both</button><button data-v="feed">Feed only</button><button data-v="cards">Cards only</button><button data-v="rotate">Rotate</button></span>
   <button id="cmp">Compact</button>
   <span class="rpg"><span class="key">Test replay</span> <select id="rp" aria-label="Replay a finished game"></select> <button id="rpgo">Replay</button> <button id="rpclr">Clear</button></span>
   <label class="key">Delay <input id="d" type="range" min="0" max="180" step="5"> <b id="dl"></b></label>
   <span class="key leg"><b class="m">You</b> · <b class="o">Opponent</b></span>
   <span id="buf"></span><span id="st"></span>
 </header>
+<div id="rot"><button id="rprev" aria-label="Previous league">◀</button><button id="rpause">Pause</button><button id="rnext" aria-label="Next league">▶</button><select id="rsec" aria-label="Seconds per card"><option>8</option><option>12</option><option>15</option><option>20</option><option>30</option></select><span class="key">sec</span><div id="rotbar"><i></i></div><span id="rotn"></span></div>
 <div class="wrap">
 <section class="panel"><h2>Live scoring</h2><div class="seg" id="ff"><button data-f="all">All plays</button><button data-f="mine">Helps you</button><button data-f="opp">Helps opponents</button></div><div id="chips" class="chips"></div><div id="feed"><div class="empty">Plays and score changes involving your players appear here after the delay.</div></div></section>
 <main id="grid"><div class="empty">Loading your leagues…</div></main>
@@ -280,16 +308,19 @@ function col(side,cls){
   return `<div class="${cls}">${side.rows.map(([pid,p,pos,lv])=>`<div class="r"><i>${esc(POS[pos]||pos||'')}</i><span class="${lv?'lv':''}">${esc(pn(pid))}</span><b>${f1(p)}</b></div>`).join('')}</div>`;
 }
 function render(c){
+  rotNames=c.data.map(l=>l.name);if(rotI>=rotNames.length)rotI=0;
   $('#grid').innerHTML=c.data.map(l=>{
     const m=l.me.total,o=l.op?l.op.total:0;
     const k=l.wp==null?'':l.wp>=65?'g':l.wp>=40?'a':'r';
-    return `<div class="lg ${k?'acc-'+k:''}${openC.has(l.name)?' open':''}" data-n="${esc(l.name)}"><div class="hd"><b>${esc(l.name)}${l.myRec?`<small class="rec">${esc(l.myRec)}</small>`:''}</b><span>vs ${esc(l.opp)}${l.opRec?`<small class="rec">${esc(l.opRec)}</small>`:''}</span></div>
+    return `<div class="lg ${k?'acc-'+k:''}${openC.has(l.name)?' open':''}${l.name===rotName()?' cur':''}" data-n="${esc(l.name)}"><div class="hd"><b>${esc(l.name)}${l.myRec?`<small class="rec">${esc(l.myRec)}</small>`:''}</b><span>vs ${esc(l.opp)}${l.opRec?`<small class="rec">${esc(l.opRec)}</small>`:''}</span></div>
       <div class="sc"><span class="me">${f1(m)}</span>${l.done?'<span class="fin">FINAL</span>':''}<span class="op">${f1(o)}</span></div>
       ${l.wp!=null?`<div class="wc">Win chance (estimate) <b class="wp-${k}">You ${Math.round(l.wp)}%</b></div>`:''}
       <div class="pl">${col(l.me,'me')}${col(l.op,'op')}</div></div>`;
   }).join('')||'<div class="empty">No matchups found for this week.</div>';
 }
 const openC=new Set();
+let rotI=0,rotPaused=false,rotLeft=0,rotNames=[];
+function rotName(){return rotNames[rotI%Math.max(1,rotNames.length)]}
 const fin={};let rpT=null,rpMsg='',rpFor=null;
 async function loadReplayGames(w){
   const ws=[w,w-1].filter(x=>x>=1);
@@ -437,17 +468,22 @@ function renderFeed(){
   const now=Date.now(),cut=now-delay*1000,on=n=>!off.has(n),SC={};
   Ls.forEach(L=>SC[L.name]=L.sc);
   const sideOk=s=>ff==='all'||(ff==='mine'?s==='me':s==='op');
-  const plays=feed.filter(f=>f.kind==='play'),att={},orph=[];
-  for(const q of feed){
-    if(q.kind!=='pts')continue;
-    let best=null,bd=1e9;
+  const plays=feed.filter(f=>f.kind==='play'),att={},orph=[],taken=new Set();
+  const lines=feed.filter(q=>q.kind==='pts').sort((a,b)=>a.t-b.t||a.n-b.n);
+  for(const q of lines){
+    let best=null,bc=1e9;
     for(const pl of plays){
       if(pl.demo)continue;
-      const d=Math.abs(pl.t-q.t);
-      if(d<=120000&&d<bd&&pl.ps.some(p=>p.name===q.name)){best=pl;bd=d}
+      const dt=Math.abs(pl.t-q.t);
+      if(dt>300000)continue;
+      const pp=pl.ps.find(p=>p.name===q.name);
+      if(!pp)continue;
+      const est=pp.st&&Object.keys(pp.st).length?fp(pp.st,pp.pos,SC[q.lg]):null;
+      const c=(est===null?1:Math.abs(q.d-est))+dt/600000+(taken.has(pl.n+'|'+q.name+'|'+q.lg)?.4:0);
+      if(c<bc){best=pl;bc=c}
     }
-    if(best){if(q.t<=cut&&on(q.lg)&&sideOk(q.s))(att[best.n]??=[]).push(q)}
-    else if(now-q.t>delay*1000+75000&&on(q.lg)&&sideOk(q.s))orph.push(q);
+    if(best){taken.add(best.n+'|'+q.name+'|'+q.lg);if(q.t<=cut&&on(q.lg)&&sideOk(q.s))(att[best.n]??=[]).push(q)}
+    else if(now-q.t>delay*1000+120000&&on(q.lg)&&sideOk(q.s))orph.push(q);
   }
   const shownPlays=plays.filter(f=>f.demo||f.t<=cut).map(f=>{
     const ps=f.ps.map(p=>({...p,y:ff==='opp'?0:p.yl.filter(on).length,a:ff==='mine'?0:p.al.filter(on).length,yl:ff==='opp'?[]:p.yl,al:ff==='mine'?[]:p.al})).filter(p=>p.y||p.a);
@@ -461,7 +497,7 @@ function renderFeed(){
   if(sig===lastSig)return;
   lastSig=sig;
   $('#feed').innerHTML=vis.length?vis.map(f=>{
-    if(f.kind==='pts')return `<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<small>${esc(f.lg)} · ${clock(f.t)}</small></div>`;
+    if(f.kind==='pts')return `<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<em class="adj" title="Sleeper changed this score but no matching play was found">Sleeper adjustment</em><small>${esc(f.lg)} · ${clock(f.t)}</small></div>`;
     const tags=f.ps.map(p=>(p.y?`<span class="me">${esc(p.name)} · yours in ${p.y}</span>`:'')+(p.a?`<span class="op">${esc(p.name)} · against in ${p.a}</span>`:'')).join('');
     const lab=f.k==='td'?'<div class="lb">🏈🚨 TOUCHDOWN</div>':f.k==='fg'?'<div class="lb sm">🥅 FIELD GOAL</div>':'';
     return `<div class="play ${f.k} ty-${f.ty||'other'}">${lab}<div class="pm"><span class="tl tl-${f.ty||'other'}">${TL[f.ty]||'PLAY'}</span> ${esc([f.q+' '+f.clk,f.dd,f.sc].filter(s=>s.trim()).join(' · '))}</div><div class="pt" title="${esc(f.text)}">${esc(f.head||f.text)}</div><div class="tags">${tags}</div>${fpBlock(f,on,SC)}</div>`;
@@ -482,14 +518,39 @@ $('#wk').onchange=e=>{selWk=e.target.value;reset();poll()};
 $('#go').onclick=init;
 $('#u').onkeydown=e=>{if(e.key==='Enter')init()};
 const qs=new URLSearchParams(location.search),qf=qs.get('feed'),qv=qs.get('view');
-let vw=['feed','cards','both'].includes(qv)?qv:qf!==null?(qf==='1'?'feed':'both'):(get('vw')||(get('fo')==='1'?'feed':'both'));
+let vw=['feed','cards','both','rotate'].includes(qv)?qv:qf!==null?(qf==='1'?'feed':'both'):(get('vw')||(get('fo')==='1'?'feed':'both'));
 function applyVw(){
   document.body.classList.toggle('feedonly',vw==='feed');
-  document.body.classList.toggle('cardsonly',vw==='cards');
+  document.body.classList.toggle('cardsonly',vw==='cards'||vw==='rotate');
+  document.body.classList.toggle('rotate',vw==='rotate');
+  rotLeft=+$('#rsec').value;showRot();
   document.querySelectorAll('#vw button').forEach(b=>b.classList.toggle('on',b.dataset.v===vw));
   lastSig='';
 }
 $('#vw').onclick=e=>{const b=e.target.closest('button');if(!b)return;vw=b.dataset.v;put('vw',vw);applyVw()};
+function showRot(){
+  const cs=[...document.querySelectorAll('#grid .lg')];
+  cs.forEach((c,i)=>c.classList.toggle('cur',i===rotI%Math.max(1,cs.length)));
+  $('#rotn').textContent=cs.length?`${(rotI%cs.length)+1} / ${cs.length}`:'';
+  $('#rotbar i').style.width=(100-100*rotLeft/Math.max(1,+$('#rsec').value))+'%';
+}
+function rotGo(d){
+  if(!rotNames.length)return;
+  rotI=(rotI+d+rotNames.length)%rotNames.length;rotLeft=+$('#rsec').value;showRot();
+}
+$('#rprev').onclick=()=>rotGo(-1);
+$('#rnext').onclick=()=>rotGo(1);
+$('#rpause').onclick=()=>{rotPaused=!rotPaused;$('#rpause').textContent=rotPaused?'Play':'Pause';$('#rpause').classList.toggle('on',rotPaused)};
+$('#rsec').value=get('rsec')||'12';
+$('#rsec').onchange=()=>{put('rsec',$('#rsec').value);rotLeft=+$('#rsec').value;showRot()};
+setInterval(()=>{
+  if(vw!=='rotate'||!rotNames.length)return;
+  if(!rotPaused){rotLeft--;if(rotLeft<=0)rotGo(1);else showRot()}
+},1000);
+document.addEventListener('keydown',e=>{
+  if(vw!=='rotate'||/INPUT|SELECT/.test(e.target.tagName))return;
+  if(e.key==='ArrowRight')rotGo(1);else if(e.key==='ArrowLeft')rotGo(-1);else if(e.key===' '){e.preventDefault();$('#rpause').click()}
+});
 applyVw();
 let cmp=get('cmp')==='1';
 function applyCmp(){document.body.classList.toggle('compact',cmp);$('#cmp').classList.toggle('on',cmp)}
