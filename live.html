@@ -328,8 +328,8 @@ async function pollPlays(sb){
       const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
       const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
       const scp=sc?{a:[ab('away'),p.awayScore,lgs[nt(ab('away'))]],h:[ab('home'),p.homeScore,lgs[nt(ab('home'))]]}:null;
-      const it={kind:'play',t:Date.now(),n:++seq,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',
-        q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,scp,logos:lgs,rz:(p.start?.yardsToEndzone??99)<=20,k,ps};
+      const it=fixHead({kind:'play',t:Date.now(),n:++seq,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',
+        q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,scp,logos:lgs,rz:(p.start?.yardsToEndzone??99)<=20,k,ps});
       feed.push(it);items.push(it);
     }
     if(Object.keys(box).length){
@@ -403,7 +403,7 @@ async function replay(){
       const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
       const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
       const scp=sc?{a:[ab('away'),p.awayScore,lgs[nt(ab('away'))]],h:[ab('home'),p.homeScore,lgs[nt(ab('home'))]]}:null;
-      return {kind:'play',demo:true,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,scp,logos:lgs,rz:(p.start?.yardsToEndzone??99)<=20,k,ps};
+      return fixHead({kind:'play',demo:true,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,scp,logos:lgs,rz:(p.start?.yardsToEndzone??99)<=20,k,ps});
     };
     let q=[];
     for(const p of all){
@@ -455,6 +455,15 @@ function playInfo(p){
   if(isRun(low,ty0))
     return {ty:'run',head:/kneel/.test(low)&&first?`${fmtN(first)} kneel`:first?`${fmtN(first)} ${yd} yd rush${td?' TD':''}`:cleanT(t).replace(/^(\([^)]*\)\s*)+/,'').replace(/\s*\([^)]*\)\.?$/,'')};
   return {ty:'other',head:t};
+}
+const shortN=n=>{const w=String(n).split(' ');return w.length>1?w[0][0]+'. '+w.slice(1).join(' '):n};
+function fixHead(it){
+  const pick=k=>it.ps.find(p=>p.st&&p.st[k]);
+  const r=it.ty==='run'?pick('rush_att'):it.ty==='pass'?pick('rec_tgt'):it.ty==='sack'?pick('pass_sack'):null;
+  if(!r||!it.head)return it;
+  const m=it.head.match(/^(.+?)( -?\d+ yd (?:rush|catch)\b.*| sacked for\b.*| kneel)$/);
+  if(m)it.head=shortN(r.name)+m[2];
+  return it;
 }
 function playStats(p,txt,hits){
   const out=hits.map(()=>({}));
