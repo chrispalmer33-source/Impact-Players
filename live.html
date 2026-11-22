@@ -52,7 +52,22 @@ button{cursor:pointer}
 .r span.lv{color:var(--live);font-weight:600}
 .r b{flex:none;font-variant-numeric:tabular-nums}
 .me .r b{color:var(--me)}.op .r b{color:var(--op)}
-.fpd{margin-top:4px;font-size:12px}.fpd summary{cursor:pointer;color:var(--mut)}
+.fpd{margin-top:4px;font-size:12px}.fpd summary{cursor:pointer;color:var(--mut);display:block;list-style:none;position:relative;padding-left:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fpd summary::-webkit-details-marker{display:none}
+.fpd summary::before{content:'▸';position:absolute;left:0}.fpd[open] summary::before{content:'▾'}
+.fpd summary b{color:var(--tx);margin-right:8px}
+.fpd .sv span{margin-right:6px;font-weight:600}.fpd .sv .me{color:var(--me)}.fpd .sv .op{color:var(--op)}
+.prow{display:flex;gap:8px}.pc{flex:1;min-width:0}
+.av{display:flex;flex-direction:column;flex:none}
+.ph{position:relative;width:38px;height:38px;border-radius:50%;border:2px solid var(--line);background:#16233a;flex:none}
+.ph+.ph{margin-top:-8px}.ph.me{border-color:var(--me)}.ph.op{border-color:var(--op)}
+.ph b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--mut)}
+.ph>img:not(.tb){position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover;object-position:top;background:#16233a}
+.ph .tb{position:absolute;right:-7px;bottom:-5px;width:18px;height:18px;border-radius:50%;background:#e8eefb;padding:1px;object-fit:contain}
+.lgo{width:14px;height:14px;vertical-align:-2px;margin:0 3px;object-fit:contain}
+.rz{display:inline-block;font-size:10px;font-weight:700;background:#fb7185;color:#0b1220;border-radius:4px;padding:0 5px;margin-left:4px}
+.sl{font-size:12px;color:var(--mut);margin:1px 0}.sl i{font-style:normal;color:#a78bfa;font-size:11px}.sl .dy{font-style:normal;color:var(--live)}.sl .dy.neg{color:#f87171}
+.scr{white-space:nowrap}
 .fph{margin-top:6px;font-weight:600}
 .fp{display:flex;justify-content:space-between;gap:8px;padding:1px 0}.fp span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fp.me b{color:var(--me)}.fp.op b{color:var(--op)}
@@ -264,12 +279,33 @@ function index(){
   for(const l of c.data)for(const s of ['me','op'])if(l[s])for(const [pid] of l[s].rows){
     if(!pid||pid==='0'||/^[A-Z]{2,3}$/.test(pid))continue;
     const pl=players[pid]||{},fi=sn(pl.first_name).charAt(0),ln=sn(pl.last_name);
-    const e=m[pid]??={n:sn(pn(pid)),name:pn(pid),pos:pl.position||'',tm:nt(pl.team),ab:fi&&ln?new RegExp('\\b'+fi+' '+ln+'\\b'):/$^/,yl:[],al:[]};
+    const e=m[pid]??={pid,n:sn(pn(pid)),name:pn(pid),pos:pl.position||'',tm:nt(pl.team),ab:fi&&ln?new RegExp('\\b'+fi+' '+ln+'\\b'):/$^/,yl:[],al:[]};
     (s==='me'?e.yl:e.al).push(l.name);
   }
   return Object.values(m).filter(e=>e.n.includes(' '));
 }
 
+const ZT={cmp:0,att:0,pyd:0,ptd:0,int:0,car:0,ryd:0,rtd:0,rec:0,tgt:0,cyd:0,ctd:0};
+const SM=[['pass_cmp','cmp'],['pass_att','att'],['pass_yd','pyd'],['pass_td','ptd'],['pass_int','int'],['rush_att','car'],['rush_yd','ryd'],['rush_td','rtd'],['rec','rec'],['rec_tgt','tgt'],['rec_yd','cyd'],['rec_td','ctd']];
+const addSt=(a,st)=>{for(const [k,t] of SM)if(st&&st[k])a[t]=(a[t]||0)+st[k]};
+function boxOf(d){
+  const m={};
+  for(const t of d.boxscore?.players||[]){
+    const tm=nt(t.team?.abbreviation);
+    for(const g of t.statistics||[]){
+      const L=g.labels||[],ix=k=>L.indexOf(k);
+      for(const a of g.athletes||[]){
+        const key=sn(a.athlete?.displayName)+'|'+tm,st=a.stats||[],o=m[key]??={};
+        const num=k=>{const i=ix(k);if(i<0)return null;const v=parseFloat(st[i]);return isNaN(v)?0:v};
+        if(g.name==='passing'){const ca=String(st[ix('C/ATT')]||'').split('/');o.cmp=+ca[0]||0;o.att=+ca[1]||0;o.pyd=num('YDS');o.ptd=num('TD');o.int=num('INT')}
+        else if(g.name==='rushing'){o.car=num('CAR');o.ryd=num('YDS');o.rtd=num('TD')}
+        else if(g.name==='receiving'){o.rec=num('REC');o.cyd=num('YDS');o.ctd=num('TD');o.tgt=num('TGTS')}
+      }
+    }
+  }
+  return m;
+}
+const totFrom=b=>{const o={...ZT,tgt:null};for(const k in b)if(b[k]!=null)o[k]=b[k];return o};
 async function pollPlays(sb){
   const live=(sb.events||[]).filter(e=>e.status.type.state==='in');
   const idx=index();
@@ -278,6 +314,8 @@ async function pollPlays(sb){
     const drives=[...(d.drives?.previous||[]),...(d.drives?.current?[d.drives.current]:[])];
     const first=!seenEv.has(e.id);seenEv.add(e.id);
     const cp=e.competitions[0].competitors,ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'',tms=cp.map(c=>nt(c.team.abbreviation));
+    const lgs={};cp.forEach(c=>lgs[nt(c.team.abbreviation)]=c.team.logo||'');
+    const box=boxOf(d),items=[];
     for(const dr of drives)for(const p of dr.plays||[]){
       const key=e.id+':'+p.id;
       if(seen.has(key))continue;
@@ -285,12 +323,22 @@ async function pollPlays(sb){
       if(first)continue;
       const txt=sn(p.text);
       const hits=idx.filter(x=>tms.includes(x.tm)&&(txt.includes(x.n)||x.ab.test(txt))),sts=playStats(p,txt,hits);
-      const ps=hits.map((x,i)=>({name:x.name,pos:x.pos,yl:x.yl,al:x.al,st:sts[i]}));
+      const ps=hits.map((x,i)=>({pid:x.pid,n:x.n,tm:x.tm,name:x.name,pos:x.pos,yl:x.yl,al:x.al,st:sts[i]}));
       if(!ps.length)continue;
       const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
       const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
-      feed.push({kind:'play',t:Date.now(),n:++seq,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',
-        q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,k,ps});
+      const scp=sc?{a:[ab('away'),p.awayScore,lgs[nt(ab('away'))]],h:[ab('home'),p.homeScore,lgs[nt(ab('home'))]]}:null;
+      const it={kind:'play',t:Date.now(),n:++seq,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',
+        q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,scp,logos:lgs,rz:(p.start?.yardsToEndzone??99)<=20,k,ps};
+      feed.push(it);items.push(it);
+    }
+    if(Object.keys(box).length){
+      const acc={};
+      for(let i=items.length-1;i>=0;i--){
+        const ps=items[i].ps;
+        for(const q of ps){const b=box[q.n+'|'+q.tm];if(!b)continue;const t=totFrom(b),a=acc[q.pid]||{};for(const [,k] of SM)if(t[k]!=null)t[k]-=a[k]||0;q.tot=t}
+        for(const q of ps)addSt(acc[q.pid]??={},q.st);
+      }
     }
   }));
 }
@@ -350,16 +398,17 @@ async function replay(){
     const cp=fin[id]?.competitions[0].competitors||[],ab=h=>cp.find(c=>c.homeAway===h)?.team.abbreviation||'',tms=cp.map(c=>nt(c.team.abbreviation));
     let all=[...(d.drives?.previous||[]),...(d.drives?.current?[d.drives.current]:[])].flatMap(x=>x.plays||[]);
     if(!all.length)all=d.plays||[];
-    const idx=index();
+    const idx=index(),run={},lgs={};cp.forEach(c=>lgs[nt(c.team.abbreviation)]=c.team.logo||'');
     const build=(p,ps)=>{
       const low=String(p.text||'').toLowerCase(),k=p.scoringPlay?(/touchdown/.test(low)?'td':/field goal/.test(low)?'fg':''):'';
       const sc=(p.awayScore!=null&&p.homeScore!=null)?`${ab('away')} ${p.awayScore} – ${ab('home')} ${p.homeScore}`:'';
-      return {kind:'play',demo:true,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,k,ps};
+      const scp=sc?{a:[ab('away'),p.awayScore,lgs[nt(ab('away'))]],h:[ab('home'),p.homeScore,lgs[nt(ab('home'))]]}:null;
+      return {kind:'play',demo:true,text:p.text,...playInfo(p),dd:p.start?.downDistanceText||'',q:p.period?.number?'Q'+p.period.number:'',clk:p.clock?.displayValue||'',sc,scp,logos:lgs,rz:(p.start?.yardsToEndzone??99)<=20,k,ps};
     };
     let q=[];
     for(const p of all){
       const txt=sn(p.text),hits=idx.filter(x=>(!tms.length||tms.includes(x.tm))&&(txt.includes(x.n)||x.ab.test(txt))),sts=playStats(p,txt,hits);
-      if(hits.length)q.push(build(p,hits.map((x,i)=>({name:x.name,pos:x.pos,yl:x.yl,al:x.al,st:sts[i]}))));
+      if(hits.length)q.push(build(p,hits.map((x,i)=>{const r=run[x.pid]??={...ZT};addSt(r,sts[i]);return {pid:x.pid,n:x.n,tm:x.tm,name:x.name,pos:x.pos,yl:x.yl,al:x.al,st:sts[i],tot:{...r}}})));
     }
     let note=`matched ${q.length} of ${all.length} plays`;
     if(!q.length){q=all.filter(p=>p.scoringPlay).map(p=>build(p,[]));note=`no plays matched your starters, so scoring plays only. Sample play: "${String(all[3]?.text||all[0]?.text||'none found').slice(0,90)}"`}
@@ -449,8 +498,33 @@ function fp(st,pos,sc){
   if(st.rec)v+=st.rec*(sc['bonus_rec_'+String(pos||'').toLowerCase()]||0);
   return v;
 }
+const ini=n=>String(n||'').split(' ').map(w=>w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();
+const hide="this.style.visibility='hidden'";
+function avatars(f){
+  return `<div class="av">${f.ps.slice(0,2).map(p=>{
+    const side=p.y&&!p.a?'me':p.a&&!p.y?'op':'',lg=f.logos&&f.logos[p.tm];
+    return `<span class="ph ${side}"><b>${esc(ini(p.name))}</b><img src="https://sleepercdn.com/content/nfl/players/thumb/${esc(p.pid)}.jpg" alt="" loading="lazy" onerror="${hide}">${lg?`<img class="tb" src="${esc(lg)}" alt="" onerror="${hide}">`:''}</span>`}).join('')}</div>`;
+}
+function statLine(p){
+  const t=p.tot,s=p.st||{};if(!t)return '';
+  const d=v=>v?` <em class="dy${v<0?' neg':''}">(${v>0?'+':''}${v} YD)</em>`:'';
+  const tdn=(n,l)=>n?`, ${n} ${l}`:'';
+  let b='';
+  if(s.pass_att)b=`${t.cmp}/${t.att} CMP, ${t.pyd} YD${tdn(t.ptd,'TD')}${tdn(t.int,'INT')}${d(s.pass_yd)}`;
+  else if(s.rec_tgt)b=`${t.rec}${t.tgt!=null?'/'+t.tgt:''} REC, ${t.cyd} YD${tdn(t.ctd,'TD')}${d(s.rec_yd)}`;
+  else if(s.rush_att)b=`${t.car} CAR, ${t.ryd} YD${tdn(t.rtd,'TD')}${d(s.rush_yd)}`;
+  else return '';
+  const w=String(p.name).split(' '),nm=w.length>1?w[0][0]+' '+w.slice(1).join(' '):p.name;
+  return `<div class="sl">${esc(nm)} <i>${esc(p.pos)}</i> • ${b}</div>`;
+}
+const scHtml=f=>{
+  if(!f.scp)return esc(f.sc||'');
+  const [a,h]=[f.scp.a,f.scp.h],im=u=>u?`<img class="lgo" src="${esc(u)}" alt="" onerror="${hide}">`:'';
+  return `${im(a[2])}${esc(a[0])} ${a[1]} – ${h[1]} ${esc(h[0])}${im(h[2])}`;
+};
 function fpBlock(f,on,SC){
   const sg=v=>(v>0?'+':'')+v.toFixed(1);
+  const nl=new Set(),sm=[],so=[];
   const g=f.ps.map(p=>{
     const rows=[],ix={};
     const add=(n,s)=>{const k=n+'|'+s;if(!(k in ix)){ix[k]=rows.length;rows.push({n,s,est:null,act:null})}return rows[ix[k]]};
@@ -458,10 +532,11 @@ function fpBlock(f,on,SC){
     p.yl.filter(on).forEach(n=>{const r=add(n,'me');if(hasSt)r.est=fp(p.st,p.pos,SC[n])});
     p.al.filter(on).forEach(n=>{const r=add(n,'op');if(hasSt)r.est=fp(p.st,p.pos,SC[n])});
     (f.pa||[]).filter(q=>q.name===p.name).forEach(q=>{const r=add(q.lg,q.s);r.act=(r.act||0)+q.d});
+    rows.filter(r=>r.est!==null||r.act!==null).forEach(r=>{nl.add(r.n);(r.s==='me'?sm:so).push(`<span class="${r.s}">${sg(r.act!==null?r.act:r.est)}</span>`)});
     const html=rows.filter(r=>r.est!==null||r.act!==null).map(r=>`<div class="fp ${r.s}"><span>${esc(r.n)}</span><b>${r.act!==null?sg(r.act)+(r.est!==null?` <small>est ${sg(r.est)}</small>`:''):`<small>est</small> ${sg(r.est)}`}</b></div>`).join('');
     return html?`<div class="fph">${esc(p.name)}</div>${html}`:'';
   }).join('');
-  return g?`<details class="fpd" data-n="${f.n}"${(f.k==='td'?!shutN.has(String(f.n)):openN.has(String(f.n)))?' open':''}><summary>Fantasy points by league</summary>${g}</details>`:'';
+  return g?`<details class="fpd" data-n="${f.n}"${(f.k==='td'?!shutN.has(String(f.n)):openN.has(String(f.n)))?' open':''}><summary><b>${nl.size} league${nl.size===1?'':'s'}</b><span class="sv">${[...sm,...so].join(' ')}</span></summary>${g}</details>`:'';
 }
 $('#feed').addEventListener('toggle',e=>{const d=e.target;if(d.dataset&&d.dataset.n){if(d.open){openN.add(d.dataset.n);shutN.delete(d.dataset.n)}else{openN.delete(d.dataset.n);shutN.add(d.dataset.n)}}},true);
 function hasImpact(ps,on,SC){
@@ -510,7 +585,8 @@ function renderFeed(){
     if(f.kind==='pts')return `<div class="f ${f.s}"><b>${f.d>0?'+':''}${f1(f.d)}</b>${esc(f.name)}<em class="adj" title="Sleeper changed this score but no matching play was found">Sleeper adjustment</em><small>${esc(f.lg)} · ${clock(f.t)}</small></div>`;
     const tags=f.ps.map(p=>(p.y?`<span class="me">${esc(p.name)} · yours in ${p.y}</span>`:'')+(p.a?`<span class="op">${esc(p.name)} · against in ${p.a}</span>`:'')).join('');
     const lab=f.k==='td'?'<div class="lb">🏈🚨 TOUCHDOWN</div>':f.k==='fg'?'<div class="lb sm">🥅 FIELD GOAL</div>':'';
-    return `<div class="play ${f.k} ty-${f.ty||'other'}">${lab}<div class="pm"><span class="tl tl-${f.ty||'other'}">${TL[f.ty]||'PLAY'}</span> ${esc([f.q+' '+f.clk,f.dd,f.sc].filter(s=>s.trim()).join(' · '))}</div><div class="pt" title="${esc(f.text)}">${esc(f.head||f.text)}</div><div class="tags">${tags}</div>${fpBlock(f,on,SC)}</div>`;
+    const rz=f.rz?'<span class="rz">RZ</span>':'';
+    return `<div class="play ${f.k} ty-${f.ty||'other'}"><div class="prow">${avatars(f)}<div class="pc">${lab}<div class="pm"><span class="tl tl-${f.ty||'other'}">${TL[f.ty]||'PLAY'}</span> ${esc([f.q+' '+f.clk,f.dd].filter(s=>s.trim()).join(' · '))}${rz} <span class="scr">${scHtml(f)}</span></div><div class="pt" title="${esc(f.text)}">${esc(f.head||f.text)}</div>${f.ps.map(statLine).join('')}<div class="tags">${tags}</div>${fpBlock(f,on,SC)}</div></div></div>`;
   }).join(''):'<div class="empty">Plays and score changes involving your players appear here after the delay.</div>';
 }
 
