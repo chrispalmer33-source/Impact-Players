@@ -368,7 +368,7 @@ async function replay(){
     rpT=setInterval(()=>{const f=q.shift();if(!f){clearInterval(rpT);return}f.t=Date.now()-delay*1000-1;f.n=++seq;feed.push(f);feed=feed.slice(-300);renderFeed()},2500);
   }catch(e){rpMsg='Replay failed: '+e.message;$('#st').textContent=rpMsg}
 }
-const openN=new Set();
+const openN=new Set(),shutN=new Set();
 const NM="(?:[A-Z]\\.){1,3}\\s?(?:St\\.\\s)?[A-Za-z][A-Za-z'’\\-]*|[A-Z]\\s[A-Za-z][A-Za-z'’\\-]*";
 const fmtN=n=>/^(?:[A-Z]\.)+/.test(n)?n.replace(/^((?:[A-Z]\.)+)\s?/,'$1 '):n.replace(/^([A-Z])\s/,'$1. ');
 const cleanT=t=>String(t||'').replace(/[\u00a0\u200b-\u200d\ufeff]/g,' ').replace(/\s+/g,' ').trim();
@@ -461,9 +461,9 @@ function fpBlock(f,on,SC){
     const html=rows.filter(r=>r.est!==null||r.act!==null).map(r=>`<div class="fp ${r.s}"><span>${esc(r.n)}</span><b>${r.act!==null?sg(r.act)+(r.est!==null?` <small>est ${sg(r.est)}</small>`:''):`<small>est</small> ${sg(r.est)}`}</b></div>`).join('');
     return html?`<div class="fph">${esc(p.name)}</div>${html}`:'';
   }).join('');
-  return g?`<details class="fpd" data-n="${f.n}"${openN.has(String(f.n))?' open':''}><summary>Fantasy points by league</summary>${g}</details>`:'';
+  return g?`<details class="fpd" data-n="${f.n}"${(f.k==='td'?!shutN.has(String(f.n)):openN.has(String(f.n)))?' open':''}><summary>Fantasy points by league</summary>${g}</details>`:'';
 }
-$('#feed').addEventListener('toggle',e=>{const d=e.target;if(d.dataset&&d.dataset.n){d.open?openN.add(d.dataset.n):openN.delete(d.dataset.n)}},true);
+$('#feed').addEventListener('toggle',e=>{const d=e.target;if(d.dataset&&d.dataset.n){if(d.open){openN.add(d.dataset.n);shutN.delete(d.dataset.n)}else{openN.delete(d.dataset.n);shutN.add(d.dataset.n)}}},true);
 function hasImpact(ps,on,SC){
   for(const p of ps){
     if(!p.st||!Object.keys(p.st).length)return true;
